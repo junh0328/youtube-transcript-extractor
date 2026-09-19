@@ -253,8 +253,11 @@ def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None):
     stem = os.path.join(summary_dir, os.path.splitext(os.path.basename(md_path))[0])
     tpl_arg = ["--template", template] if template else []
 
+    # --model 을 항상 넘기면 YT_LLM_MODEL 환경변수를 덮어쓴다. 지정됐을 때만 전달한다
     summarize = [sys.executable, os.path.join(here, "summarize.py"), md_path,
-                 "--out", stem + ".json", "--model", model] + tpl_arg
+                 "--out", stem + ".json"] + tpl_arg
+    if model:
+        summarize += ["--model", model]
     if extract_top:
         summarize += ["--extract", str(extract_top)]
     if subprocess.run(summarize).returncode != 0:
@@ -279,7 +282,7 @@ def main():
     ap.add_argument("--no-auto", action="store_true")
     ap.add_argument("--from-json", help="이미 추출한 .json 을 재가공(네트워크 요청 없음)")
     ap.add_argument("--summary-dir", default="summaries")
-    ap.add_argument("--model", default="claude-opus-5", help="요약에 쓸 모델")
+    ap.add_argument("--model", help="요약에 쓸 모델 (기본: claude-opus-5, 또는 YT_LLM_MODEL)")
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     ap.add_argument("--extract", type=int, metavar="N",
                     help="요약 전에 TextRank 로 상위 N개 문단만 고름(내용이 줄어드니 긴 영상에만)")

@@ -24,6 +24,14 @@ for arg in "$@"; do
   esac
 done
 
+# .env 가 있으면 먼저 읽는다. summarize.py 도 같은 파일을 보므로 판단 기준이 일치한다
+if [ -f "$REPO/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$REPO/.env"
+  set +a
+fi
+
 if [ -t 1 ]; then
   G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; D=$'\033[2m'; N=$'\033[0m'
 else
@@ -105,34 +113,51 @@ else
   fi
 fi
 
-# --- claude CLI (요약) -------------------------------------------------------
-# 요약이 이 도구의 핵심이므로 필수로 본다.
-# 설치돼 있어도 로그인이 안 돼 있으면 요약 단계에서 실패하는데,
-# 그건 실제로 한 번 불러 봐야만 알 수 있다
-if command -v claude >/dev/null 2>&1; then
-  ok "claude CLI" "$(claude --version 2>/dev/null | head -1)"
+# --- 요약 백엔드 -------------------------------------------------------------
+# 기본은 claude CLI. YT_LLM_BASE_URL 이 있으면 OpenAI 호환 엔드포인트를 쓴다
+BACKEND_OK=1
+if [ -n "${YT_LLM_BASE_URL:-}" ]; then
+  ok "요약 백엔드" "OpenAI 호환 · ${YT_LLM_BASE_URL}"
+  if [ -n "${YT_LLM_MODEL:-}" ]; then
+    ok "YT_LLM_MODEL" "$YT_LLM_MODEL"
+  else
+    bad "YT_LLM_MODEL" "없음 — 모델 이름이 필요합니다"
+    MISSING=1; BACKEND_OK=0
+  fi
+  if [ -n "${YT_LLM_API_KEY:-}" ]; then
+    ok "YT_LLM_API_KEY" "설정됨"
+  else
+    warn "YT_LLM_API_KEY" "없음 (Ollama 등 로컬 서버면 무방)"
+  fi
+elif command -v claude >/dev/null 2>&1; then
+  ok "요약 백엔드" "claude CLI · $(claude --version 2>/dev/null | head -1)"
+else
+  bad "요약 백엔드" "없음 — claude CLI 도 YT_LLM_BASE_URL 도 없습니다"
+  note "https://claude.com/claude-code 에서 설치 후 로그인, 또는"
+  note "export YT_LLM_BASE_URL=... YT_LLM_MODEL=... YT_LLM_API_KEY=..."
+  note "자막만 쓰려면: python3 yt-transcript.py \"\$URL\" --no-summary"
+  MISSING=1; BACKEND_OK=0
+fi
 
+# 설치돼 있어도 로그인·키가 잘못돼 있으면 요약 단계에서야 실패한다.
+# 그건 실제로 한 번 불러 봐야만 알 수 있어서, 백엔드와 무관하게 같은 방식으로 확인한다
+if [ "$BACKEND_OK" = "1" ]; then
   if [ "$PROBE" = "1" ]; then
-    # 진행 표시는 터미널에서만. 로그로 남기면 \r 이 지저분하게 섞인다
-    [ -t 1 ] && printf '      %s로그인 확인 중...%s\r' "$D" "$N"
-    REPLY_TEXT="$(printf 'Reply with exactly: OK' | claude -p --model claude-haiku-4-5 2>/dev/null)"
+    [ -t 1 ] && printf '      %s모델 호출 확인 중...%s\r' "$D" "$N"
+    PROBE_OUT="$(cd "$REPO" && python3 summarize.py --selftest 2>&1)"
+    PROBE_RC=$?
     [ -t 1 ] && printf '\033[2K'
-    if [[ "$REPLY_TEXT" == *OK* ]]; then
-      ok "claude 로그인" "정상"
+    if [ "$PROBE_RC" = "0" ]; then
+      ok "모델 호출" "${PROBE_OUT#\[정상\] }"
     else
-      bad "claude 로그인" "응답을 받지 못함"
-      note "claude 를 실행해 로그인했는지 확인하세요"
+      bad "모델 호출" "${PROBE_OUT#\[실패\] }"
+      note "로그인 또는 API 키를 확인하세요"
       note "확인을 건너뛰려면: ./setup.sh --no-probe"
       MISSING=1
     fi
   else
-    warn "claude 로그인" "확인 안 함 (--no-probe)"
+    warn "모델 호출" "확인 안 함 (--no-probe)"
   fi
-else
-  bad "claude CLI" "없음 — 요약을 만들 수 없음"
-  note "https://claude.com/claude-code 에서 설치 후 로그인"
-  note "자막만 쓰려면: python3 yt-transcript.py \"\$URL\" --no-summary"
-  MISSING=1
 fi
 
 # --- 저장소 파일 -------------------------------------------------------------

@@ -17,6 +17,9 @@ import os
 import re
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 
 import extract
@@ -62,20 +65,117 @@ def parse_transcript(path):
     }
 
 
-def call_model(prompt, model, duration, tpl, retries=3):
-    """템플릿을 만족하는 요약이 나올 때까지 claude CLI 를 호출한다.
+def load_env_file(path=None):
+    """레포의 .env 를 읽어 환경변수로 올린다.
+
+    이미 설정된 환경변수는 덮지 않는다 — 셸에서 일시적으로 바꿔 쓰는 쪽이
+    파일보다 우선해야 한 번만 다르게 돌려보기가 쉽다.
+    """
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as fp:
+        for line in fp:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            os.environ.setdefault(key.strip(), value)
+
+
+def resolve_backend(model):
+    """어떤 LLM 으로 부를지 정한다.
+
+    기본은 로컬 `claude` CLI 다. 환경변수 YT_LLM_BASE_URL 이 있으면
+    OpenAI 호환 엔드포인트로 보낸다 — OpenAI, Groq, Together, OpenRouter,
+    vLLM, Ollama, Gemini(OpenAI 호환 경로)가 모두 같은 규격이라
+    구현 하나로 커버된다.
+    """
+    load_env_file()
+    base = os.environ.get("YT_LLM_BASE_URL", "").strip()
+    chosen = model or os.environ.get("YT_LLM_MODEL", "").strip()
+    if base:
+        if not chosen:
+            sys.exit("[에러] YT_LLM_BASE_URL 을 쓰려면 YT_LLM_MODEL 또는 --model 이 필요합니다.")
+        return {"kind": "openai", "base_url": base, "model": chosen,
+                "api_key": os.environ.get("YT_LLM_API_KEY", "").strip()}
+    return {"kind": "claude-cli", "model": chosen or "claude-opus-5"}
+
+
+def describe_backend(backend):
+    if backend["kind"] == "claude-cli":
+        return "claude CLI · {}".format(backend["model"])
+    host = re.sub(r"^https?://", "", backend["base_url"]).split("/")[0]
+    return "{} · {}".format(host, backend["model"])
+
+
+def _call_claude_cli(prompt, backend):
+    """(응답 텍스트, 에러) 를 돌려준다."""
+    proc = subprocess.run(["claude", "-p", "--model", backend["model"]],
+                          input=prompt, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None, "claude 호출 실패: " + (proc.stderr or "").strip()[:150]
+    return proc.stdout, None
+
+
+def _call_openai(prompt, backend, json_mode=True):
+    """OpenAI 호환 /chat/completions 로 보낸다. 표준 라이브러리만 쓴다."""
+    url = backend["base_url"].rstrip("/") + "/chat/completions"
+    payload = {"model": backend["model"],
+               "messages": [{"role": "user", "content": prompt}]}
+    if json_mode:
+        # JSON 만 나오도록 제공자 쪽에서 막아준다. 지원하지 않으면 아래에서 한 번 더 시도
+        payload["response_format"] = {"type": "json_object"}
+
+    headers = {"Content-Type": "application/json"}
+    if backend["api_key"]:
+        headers["Authorization"] = "Bearer " + backend["api_key"]
+
+    request = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                     headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            body = json.load(response)
+        return body["choices"][0]["message"]["content"], None
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:200]
+        if json_mode and exc.code in (400, 404, 422):
+            # response_format 을 모르는 제공자(예: 일부 로컬 서버)면 빼고 재시도
+            return _call_openai(prompt, backend, json_mode=False)
+        return None, "HTTP {}: {}".format(exc.code, detail)
+    except (urllib.error.URLError, KeyError, ValueError, TimeoutError) as exc:
+        return None, "{}: {}".format(type(exc).__name__, str(exc)[:150])
+
+
+def send(prompt, backend):
+    if backend["kind"] == "openai":
+        return _call_openai(prompt, backend)
+    return _call_claude_cli(prompt, backend)
+
+
+def call_model(prompt, backend, duration, tpl, retries=3):
+    """템플릿을 만족하는 요약이 나올 때까지 모델을 호출한다.
 
     프롬프트만으로는 스키마가 지켜진다는 보장이 없다. 받은 값을 검사해서
     구조가 깨졌으면 무엇이 잘못됐는지 되먹여 다시 받는다.
     """
     feedback = ""
     for attempt in range(retries):
-        proc = subprocess.run(["claude", "-p", "--model", model],
-                              input=prompt + feedback, capture_output=True, text=True)
-        if proc.returncode != 0:
-            problems = ["claude 호출 실패: " + (proc.stderr or "").strip()[:150]]
+        raw, error = send(prompt + feedback, backend)
+        if error:
+            # 전송 실패는 모델이 잘못 쓴 게 아니다. 되먹일 내용이 없고, 쉬었다 다시 걸어야 한다
+            # (무료 티어의 429 가 대표적이다)
+            problems = [error]
+            if attempt < retries - 1:
+                wait = 15 * (attempt + 1)
+                print("[재시도] {} — {}초 뒤 다시 시도합니다".format(error, wait), file=sys.stderr)
+                time.sleep(wait)
+                continue
         else:
-            data = extract_json(proc.stdout)
+            data = extract_json(raw)
             if data is None:
                 problems = ["응답이 올바른 JSON 이 아닙니다"]
             else:
@@ -246,14 +346,30 @@ def safe_name(title):
 
 def main():
     ap = argparse.ArgumentParser(description="자막을 한국어 요약 JSON 으로 변환")
-    ap.add_argument("transcript", help="yt-transcript.py 가 만든 .md")
+    ap.add_argument("transcript", nargs="?", help="yt-transcript.py 가 만든 .md")
     ap.add_argument("--outdir", default="summaries")
     ap.add_argument("--out", help="출력 .json 경로를 직접 지정(--outdir 무시)")
-    ap.add_argument("--model", default="claude-opus-5")
+    ap.add_argument("--model", help="모델 이름 (기본: claude-opus-5, 또는 YT_LLM_MODEL)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="자막 없이 모델 호출만 확인하고 끝냄")
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     ap.add_argument("--extract", type=int, metavar="N",
                     help="TextRank 로 상위 N개 문단만 골라 모델에 넘김(할루시네이션·토큰 절감)")
     args = ap.parse_args()
+    backend = resolve_backend(args.model)
+
+    if args.selftest:
+        # setup.sh 가 부른다. 백엔드가 무엇이든 같은 방식으로 확인하기 위해
+        # bash 쪽에 HTTP 호출을 또 구현하지 않고 여기서 처리한다
+        raw, error = send("Reply with exactly: OK", backend)
+        if error or "OK" not in (raw or ""):
+            print("[실패] {} — {}".format(describe_backend(backend), error or "응답 없음"))
+            return 1
+        print("[정상] {}".format(describe_backend(backend)))
+        return 0
+
+    if not args.transcript:
+        ap.error("자막 .md 경로가 필요합니다 (--selftest 제외)")
 
     tpl = tmpl.load(args.template)
     meta = parse_transcript(args.transcript)
@@ -269,12 +385,13 @@ def main():
         meta["source"]["extract"] = {"kept": kept, "total": total}
 
     print("[정보] 요약 생성 중... ({} · 템플릿 {} v{})".format(
-        args.model, tpl.get("name", "?"), tpl.get("version", "?")))
+        describe_backend(backend), tpl.get("name", "?"), tpl.get("version", "?")))
     prompt = tmpl.build_prompt(tpl, body)
-    summary = call_model(prompt, args.model, meta["video"]["duration_sec"], tpl)
+    summary = call_model(prompt, backend, meta["video"]["duration_sec"], tpl)
 
     meta["source"]["generated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
-    meta["source"]["model"] = args.model
+    meta["source"]["model"] = backend["model"]
+    meta["source"]["backend"] = backend["kind"]
     # 어떤 템플릿으로 만든 결과인지 남긴다. 템플릿이 바뀌면 산출물도 달라지기 때문
     meta["source"]["template"] = "{}@{}".format(tpl.get("name", "?"), tpl.get("version", "?"))
     payload = {"video": meta["video"], "source": meta["source"]}
@@ -288,8 +405,8 @@ def main():
 
     print("[{}] {}".format("덮어씀" if existed else "완료", path))
     print("[완료] 핵심 {}개 · 섹션 {}개".format(len(payload["key_points"]), len(payload["sections"])))
-    return path
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

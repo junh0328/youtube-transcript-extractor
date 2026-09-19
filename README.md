@@ -94,7 +94,44 @@ https://www.youtube.com/watch?v=VIDEO_ID
 
 바로 쓸 수 있으면 종료 코드 `0`, 빠진 게 있으면 `1` 이다.
 
-요약은 `ANTHROPIC_API_KEY` 없이 `claude` CLI 를 헤드리스(`-p`)로 호출해 만든다. API 키 방식으로 바꾸려면 `summarize.py` 의 `call_model()` 하나만 교체하면 된다.
+기본은 `claude` CLI 다. 키 없이 기존 로그인을 그대로 쓴다.
+
+### 다른 LLM 을 쓰려면
+
+**코드를 고칠 필요 없다.** 환경변수 3개면 OpenAI 호환 엔드포인트로 보낸다 — OpenAI, Gemini, Groq, Together, OpenRouter, vLLM, Ollama 가 모두 같은 규격이라 구현 하나로 커버된다.
+
+```bash
+cp .env.example .env    # .env 는 .gitignore 에 있다
+```
+
+```ini
+# .env — Gemini 무료 티어 예시
+YT_LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+YT_LLM_API_KEY=발급받은_키
+YT_LLM_MODEL=gemini-2.5-flash
+```
+
+| 변수 | 없으면 |
+| --- | --- |
+| `YT_LLM_BASE_URL` | claude CLI 를 쓴다 |
+| `YT_LLM_MODEL` | (BASE_URL 이 있으면) 오류 — 모델 이름이 필요하다 |
+| `YT_LLM_API_KEY` | 인증 헤더를 붙이지 않는다 (Ollama 같은 로컬 서버용) |
+
+셸에서 `export` 한 값이 `.env` 보다 우선한다. 한 번만 다르게 돌려볼 때 쓴다.
+
+```bash
+YT_LLM_MODEL=gemini-2.5-pro python3 yt-transcript.py "$URL"
+```
+
+연결이 되는지는 자막 없이 먼저 확인할 수 있다.
+
+```bash
+python3 summarize.py --selftest      # [정상] generativelanguage.googleapis.com · gemini-2.5-flash
+```
+
+`response_format: json_object` 를 붙여 보내되, 제공자가 거부하면(400/404/422) 자동으로 빼고 다시 보낸다. HTTP 오류는 15초·30초 간격으로 최대 3회 재시도한다 — 무료 티어의 429 를 넘기기 위해서다.
+
+어떤 백엔드로 만든 요약인지는 `source.backend` 와 `source.model` 에 남는다.
 
 ---
 
