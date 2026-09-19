@@ -244,16 +244,16 @@ def main():
         sys.exit("[에러] 자막 내용이 비어 있습니다.")
 
     os.makedirs(args.outdir, exist_ok=True)
-    # 언어·청크가 다른 결과끼리 덮어쓰지 않도록 파일명에 반영
-    suffix = "_{}".format(lang) + ("_chunk{}s".format(int(args.chunk)) if args.chunk > 0 else "")
-    stem = os.path.join(args.outdir, safe_name(meta.get("title", "transcript")) + suffix)
+    # 영상 제목만으로 파일명을 정한다 → 같은 URL 을 다시 돌리면 기존 산출물을 덮어쓴다
+    stem = os.path.join(args.outdir, safe_name(meta.get("title", "transcript")))
 
-    if args.format in ("md", "both"):
-        write_markdown(stem + ".md", meta, lang, is_auto, segments)
-        print("[완료] {}.md".format(stem))
-    if args.format in ("json", "both"):
-        write_json(stem + ".json", meta, lang, is_auto, segments)
-        print("[완료] {}.json".format(stem))
+    for ext, writer in (("md", write_markdown), ("json", write_json)):
+        if args.format not in (ext, "both"):
+            continue
+        path = "{}.{}".format(stem, ext)
+        existed = os.path.exists(path)
+        writer(path, meta, lang, is_auto, segments)
+        print("[{}] {}".format("덮어씀" if existed else "완료", path))
     print("[완료] 세그먼트 {}개".format(len(segments)))
 
 

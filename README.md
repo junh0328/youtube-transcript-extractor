@@ -58,7 +58,14 @@ python3 yt-transcript.py --from-json "transcripts/제목_ko.json" --chunk 90
 [경고] 'ko' 자막이 없어 'en' 로 대체합니다. 한국어 결과가 아닙니다.
 ```
 
-출력 파일명은 `<영상 제목>_<언어>[_chunk<N>s].<확장자>` 형식이라 언어·청크 조합이 서로 덮어쓰지 않는다.
+출력 파일명은 `<영상 제목>.<확장자>` 다. **같은 URL 을 다시 돌리면 기존 파일을 덮어쓴다** — 옵션을 바꿔가며 여러 번 실행해도 파일이 쌓이지 않고 항상 최신 결과 하나만 남는다. 덮어쓴 경우 출력이 `[완료]` 대신 `[덮어씀]` 으로 표시된다.
+
+언어나 문단 길이가 다른 결과를 나란히 두고 비교하려면 `--outdir` 로 분리한다.
+
+```bash
+python3 yt-transcript.py "$URL" --outdir ko
+python3 yt-transcript.py "$URL" --outdir en --lang en-orig
+```
 
 ## 언어 코드에 대해
 
@@ -85,11 +92,4 @@ python3 yt-transcript.py --from-json "transcripts/제목_ko.json" --chunk 90
 
 ## 예시 결과물
 
-`transcripts/` 에 [예시 영상 A](https://www.youtube.com/watch?v=VIDEO_ID) (19분 31초) 추출 결과가 들어 있다.
-
-| 파일 | 내용 | 세그먼트 |
-| --- | --- | --- |
-| `..._en-orig.json` / `.md` | 영어 원본 트랙, 원본 세그먼트 | 515 |
-| `..._en-orig_chunk45s.md` | 영어 원본, 45초 문단화 | 27 |
-| `..._ko.json` / `.md` | 한국어 번역 트랙, 원본 세그먼트 | 450 |
-| `..._ko_chunk45s.md` | 한국어 번역, 45초 문단화 | 27 |
+`transcripts/예시 영상 A.md` — [해당 영상](https://www.youtube.com/watch?v=VIDEO_ID) (19분 31초) 을 기본 옵션으로 추출한 결과. 한국어 번역 트랙의 450개 원본 세그먼트를 45초 단위로 묶어 27개 문단이 됐다.
