@@ -15,16 +15,16 @@ python3 yt-transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
 ```mermaid
 flowchart TD
     A["유튜브 URL"] --> B["yt-transcript.py<br/>자막 받기 · 45초 문단화"]
-    B --> C["transcripts/&lt;제목&gt;.md"]
+    B --> C["transcripts/&lt;채널&gt;/&lt;제목&gt;.md"]
     C --> D["summarize.py<br/>Claude 가 한국어 요약"]
     D --> E{"template.json<br/>양식대로인가"}
     E -->|"구조 깨짐"| D
-    E -->|"통과 · 보정"| F["summaries/&lt;제목&gt;.json"]
+    E -->|"통과 · 보정"| F["summaries/&lt;채널&gt;/&lt;제목&gt;.json"]
     F --> G["grounding.py<br/>숫자를 원문과 대조"]
     F --> H["render.py"]
     H --> I1["카카오톡 텍스트"]
     H --> I2["슬랙 Block Kit"]
-    H --> I3["summaries/&lt;제목&gt;.md"]
+    H --> I3["summaries/&lt;채널&gt;/&lt;제목&gt;.md"]
 
     style E fill:#fef7e0,stroke:#f9ab00
     style G fill:#e6f4ea,stroke:#34a853
@@ -38,11 +38,11 @@ flowchart TD
 
 | 파일 | 내용 |
 | --- | --- |
-| `transcripts/<제목>.md` | 영상 **원본 언어** 자막. 45초 문단, 타임스탬프 점프 링크 |
-| `summaries/<제목>.json` | **한국어** 요약 정본 (항목별 구조) |
-| `summaries/<제목>.md` | 한국어 요약 읽기용 문서 |
+| `transcripts/<채널>/<제목>.md` | 영상 **원본 언어** 자막. 45초 문단, 타임스탬프 점프 링크 |
+| `summaries/<채널>/<제목>.json` | **한국어** 요약 정본 (항목별 구조) |
+| `summaries/<채널>/<제목>.md` | 한국어 요약 읽기용 문서 |
 
-같은 URL 을 다시 돌리면 세 파일 모두 덮어쓴다. 덮어쓴 경우 `[완료]` 대신 `[덮어씀]` 으로 표시된다.
+채널(업로더)별로 폴더가 자동으로 나뉜다. 같은 URL 을 다시 돌리면 세 파일 모두 덮어쓴다. 덮어쓴 경우 `[완료]` 대신 `[덮어씀]` 으로 표시된다.
 
 `summaries/`, `transcripts/` 는 개인 산출물이라 저장소에 올리지 않는다(`.gitignore`, 폴더만 `.gitkeep` 으로 유지). **예시 한 건만 예외로 포함돼 있다** — 40분짜리 한국어 기술 강연(옵시디언 × Claude Code)의 자막 55문단과 그 요약으로, 위 세 파일이 실제로 어떤 모양인지 바로 볼 수 있다.
 
@@ -148,8 +148,8 @@ python3 yt-transcript.py "<유튜브 URL>"
 | `--lang` | `orig`(원본 언어 자동 탐지) 또는 언어 코드(쉼표 구분) | `orig` |
 | `--format` | `md` / `json` / `both` | `md` |
 | `--chunk` | N초 단위로 문단화 (0이면 원본 세그먼트 유지) | `45` |
-| `--outdir` | 자막 출력 디렉터리 | `transcripts` |
-| `--summary-dir` | 요약 출력 디렉터리 | `summaries` |
+| `--outdir` | 자막 출력 디렉터리 (그 안에 채널별 하위 폴더 생성) | `transcripts` |
+| `--summary-dir` | 요약 출력 디렉터리 (그 안에 채널별 하위 폴더 생성) | `summaries` |
 | `--model` | 요약에 쓸 모델 | `claude-opus-5` |
 | `--template` | 요약 양식 파일 | `template.json` |
 | `--extract N` | 요약 전에 중요 문단 N개만 선별 | off |
@@ -165,7 +165,7 @@ python3 yt-transcript.py "$URL" --lang ko
 python3 yt-transcript.py "$URL" --format both
 
 # 이미 뽑은 json 으로 문단 길이만 바꿔 재생성 (429 회피)
-python3 yt-transcript.py --from-json "transcripts/제목.json" --chunk 90
+python3 yt-transcript.py --from-json "transcripts/채널/제목.json" --chunk 90
 
 # 결과를 나란히 비교
 python3 yt-transcript.py "$URL" --outdir orig
@@ -176,25 +176,25 @@ python3 yt-transcript.py "$URL" --outdir ko --lang ko
 
 ```bash
 # 요약만 다시
-python3 summarize.py "transcripts/<제목>.md" --outdir summaries
+python3 summarize.py "transcripts/<채널>/<제목>.md" --outdir "summaries/<채널>"
 
 # 메신저용 렌더링
-python3 render.py "summaries/<제목>.json" --to kakao          # 순수 텍스트
-python3 render.py "summaries/<제목>.json" --to slack          # Block Kit (핵심)
-python3 render.py "summaries/<제목>.json" --to slack-thread   # Block Kit (상세)
-python3 render.py "summaries/<제목>.json" --to md -o out.md
+python3 render.py "summaries/<채널>/<제목>.json" --to kakao          # 순수 텍스트
+python3 render.py "summaries/<채널>/<제목>.json" --to slack          # Block Kit (핵심)
+python3 render.py "summaries/<채널>/<제목>.json" --to slack-thread   # Block Kit (상세)
+python3 render.py "summaries/<채널>/<제목>.json" --to md -o out.md
 
 # 숫자 대조 검증
-python3 grounding.py "summaries/<제목>.json" [--window 90] [--verbose]
+python3 grounding.py "summaries/<채널>/<제목>.json" [--window 90] [--verbose]
 
 # 중요 문단만 선별해 보기
-python3 extract.py "transcripts/<제목>.md" --top 12
+python3 extract.py "transcripts/<채널>/<제목>.md" --top 12
 ```
 
 표준출력으로 나가므로 그대로 파이프할 수 있다.
 
 ```bash
-python3 render.py "summaries/<제목>.json" --to slack \
+python3 render.py "summaries/<채널>/<제목>.json" --to slack \
   | curl -sX POST -H 'Content-type: application/json' -d @- "$SLACK_WEBHOOK_URL"
 ```
 

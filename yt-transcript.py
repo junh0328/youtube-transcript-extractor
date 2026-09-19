@@ -316,9 +316,13 @@ def main():
     if not segments:
         sys.exit("[에러] 자막 내용이 비어 있습니다.")
 
-    os.makedirs(args.outdir, exist_ok=True)
+    # 채널별로 폴더를 나눈다 (transcripts/<채널>/..., summaries/<채널>/...)
+    channel = safe_name(meta.get("uploader") or "미상")
+    outdir = os.path.join(args.outdir, channel)
+    summary_dir = os.path.join(args.summary_dir, channel)
+    os.makedirs(outdir, exist_ok=True)
     # 영상 제목만으로 파일명을 정한다 → 같은 URL 을 다시 돌리면 기존 산출물을 덮어쓴다
-    stem = os.path.join(args.outdir, safe_name(meta.get("title", "transcript")))
+    stem = os.path.join(outdir, safe_name(meta.get("title", "transcript")))
 
     for ext, writer in (("md", write_markdown), ("json", write_json)):
         if args.format not in (ext, "both"):
@@ -334,7 +338,7 @@ def main():
     if args.format == "json":
         print("[정보] 요약은 .md 자막을 입력으로 씁니다. --format md 또는 both 로 실행하세요.")
         return
-    run_pipeline(stem + ".md", args.summary_dir, args.model, args.template, args.extract)
+    run_pipeline(stem + ".md", summary_dir, args.model, args.template, args.extract)
 
 
 if __name__ == "__main__":
