@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """유튜브 영상의 자막을 타임스탬프와 함께 .md 로 추출한다.
 
-기본 동작: 한국어 자막(영어 영상이면 자동 번역본)을 45초 단위로 문단화한 .md 한 개.
+기본 동작: 영상 원본 언어 자막을 45초 단위로 문단화한 .md 한 개.
+한국어가 필요하면 요약 단계에서 옮긴다(유튜브 번역 트랙은 오역이 섞인다).
 
 사용법:
-    yt-transcript.py <URL> [--lang ko] [--format md|json|both] [--outdir .]
+    yt-transcript.py <URL> [--lang orig] [--format md|json|both] [--outdir .]
                           [--chunk 45] [--no-auto] [--from-json PATH]
 
 옵션:
-    --lang    선호 언어 코드(쉼표로 여러 개, 앞에서부터 우선). 기본: ko,en-orig,en
+    --lang    'orig'(원본 언어 자동 탐지) 또는 언어 코드. 쉼표로 여러 개. 기본: orig
     --format  출력 형식. 기본: md
     --outdir  출력 디렉터리. 기본: 현재 디렉터리
     --chunk   N초 단위로 자막을 병합해 문단화(0이면 원본 세그먼트 유지). 기본: 45
@@ -39,10 +40,34 @@ def fetch_metadata(url):
 
 def _warn_fallback(chosen, wanted):
     """1순위 언어를 못 구하고 폴백했으면 조용히 넘어가지 않고 알린다."""
-    if wanted and chosen.split("-")[0] != wanted[0].split("-")[0]:
-        print("[경고] '{}' 자막이 없어 '{}' 로 대체합니다. 한국어 결과가 아닙니다.".format(
+    if wanted and wanted[0] != "orig" and chosen.split("-")[0] != wanted[0].split("-")[0]:
+        print("[경고] '{}' 자막이 없어 '{}' 로 대체합니다. 요청한 언어가 아닙니다.".format(
             wanted[0], chosen))
     return chosen
+
+
+def find_original(meta, manual, auto):
+    """영상 원본 언어 트랙을 찾는다. (코드, 자동생성여부) 또는 None.
+
+    번역 트랙은 2초짜리 조각을 앞뒤 맥락 없이 옮기기 때문에 오역이 섞인다.
+    요약 단계에서 LLM 이 전체 맥락을 보고 번역하는 편이 나으므로 원본을 기본으로 쓴다.
+    """
+    # 1) 유튜브가 '-orig' 로 표시한 원본 음성 인식 트랙이 가장 확실하다
+    for code in auto:
+        if code.endswith("-orig"):
+            return code, True
+    # 2) 메타데이터의 영상 언어(en-US 등)와 일치하는 트랙. 수동 자막을 먼저 본다
+    lang = (meta.get("language") or "").split("-")[0]
+    if lang:
+        for pool, is_auto in ((manual, False), (auto, True)):
+            for code in pool:
+                if code.split("-")[0] == lang:
+                    return code, is_auto
+    # 3) 수동 자막은 보통 원본 언어로 먼저 달린다. 유튜브가 준 순서를 그대로 믿는다
+    #    (알파벳순으로 정렬하면 원본이 아닌 번역이 앞설 수 있다)
+    for code in manual:
+        return code, False
+    return None
 
 
 def pick_language(meta, wanted, allow_auto):
@@ -51,6 +76,11 @@ def pick_language(meta, wanted, allow_auto):
     auto = (meta.get("automatic_captions") or {}) if allow_auto else {}
 
     for lang in wanted:
+        if lang == "orig":
+            found = find_original(meta, manual, auto)
+            if found:
+                return found
+            continue
         for pool, is_auto in ((manual, False), (auto, True)):
             # 정확히 일치 → ko
             if lang in pool:
@@ -207,8 +237,9 @@ def write_json(path, meta, lang, is_auto, segments):
 def main():
     ap = argparse.ArgumentParser(description="유튜브 자막을 타임스탬프와 함께 추출")
     ap.add_argument("url", nargs="?", help="유튜브 URL (--from-json 사용 시 생략 가능)")
-    # 기본값: 한국어(영어 영상이면 자동 번역본) · 45초 문단화 · md 한 개
-    ap.add_argument("--lang", default="ko,en-orig,en")
+    # 기본값: 원본 언어 트랙 · 45초 문단화 · md 한 개
+    # 번역은 요약 단계에서 LLM 이 전체 맥락을 보고 하는 편이 낫다(README 참고)
+    ap.add_argument("--lang", default="orig")
     ap.add_argument("--format", default="md", choices=["md", "json", "both"])
     ap.add_argument("--outdir", default=".")
     ap.add_argument("--chunk", type=float, default=45)
