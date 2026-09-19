@@ -25,7 +25,7 @@ def load(name, path):
 sm = load("sm", "summarize.py")
 rd = load("rd", "render.py")
 TPL = load("tmpl_mod", "template.py").load()
-BASE = json.load(open("summaries/예시 영상 A.json", encoding="utf-8"))
+BASE = json.load(open("tests/fixtures/base_summary.json", encoding="utf-8"))
 
 
 def over_count(d):
