@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "name": "youtube-summary-ko",
+  "description": "유튜브 자막 → 슬랙·카카오톡 발송용 한국어 요약",
+  "output_language": "한국어",
+
+  "limits": {
+    "headline_chars": 100,
+    "key_point_chars": 90,
+    "key_points": [3, 5],
+    "sections": [3, 6],
+    "section_points": [2, 7]
+  },
+
+  "channels": {
+    "kakao_chars": 1000,
+    "slack_section_chars": 3000
+  },
+
+  "schema": {
+    "headline": "한 줄 결론. {headline_chars}자 이내.",
+    "key_points": [
+      { "text": "핵심 내용 한 줄. {key_point_chars}자 이내.", "t": 88 }
+    ],
+    "sections": [
+      {
+        "title": "섹션 제목",
+        "t": 45,
+        "points": [{ "text": "상세 내용 한 줄.", "t": 133 }]
+      }
+    ],
+    "entities": {
+      "keywords": ["핵심 키워드", "..."],
+      "figures": [{ "label": "수치의 이름", "value": "수치", "t": 964 }]
+    },
+    "disclaimer": "영상 성격에 맞는 한 줄 주의 문구. 불필요하면 빈 문자열."
+  },
+
+  "rules": [
+    "**{output_language}로 씁니다.** 자막이 다른 언어여도 요약은 {output_language}입니다. 기계 번역이 아니라 전체 맥락을 이해한 번역이어야 합니다.",
+    "**`t` 는 해당 내용이 나오는 시점의 초 단위 정수**입니다. 자막의 `&t=88s` 같은 링크에서 그대로 가져옵니다. 모든 항목에 반드시 넣습니다.",
+    "**화자 귀속 문체를 씁니다.** 영상 속 주장은 사실이 아니라 화자의 말입니다. \"~라고 주장한다 / 본다 / 예상한다 / 설명한다\" 로 씁니다. \"~이다\" 로 단정하지 않습니다.",
+    "`key_points` 는 {key_points_min}~{key_points_max}개. 가장 중요한 것만 고릅니다.",
+    "`sections` 는 {sections_min}~{sections_max}개. 각 섹션의 `points` 는 {section_points_min}~{section_points_max}개.",
+    "**자동 자막의 전사 오류를 교정합니다.** 인명·전문용어·숫자가 문맥상 명백히 잘못 인식된 경우 올바른 표기로 씁니다.",
+    "`figures` 는 영상에서 언급된 구체적 수치(목표가, 비율, 금액, 날짜 등). 없으면 빈 배열.",
+    "`disclaimer` 는 투자·의료·법률 등 조언으로 오해될 수 있는 내용일 때만 채웁니다. 그 외에는 \"\"."
+  ]
+}

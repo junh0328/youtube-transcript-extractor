@@ -52,18 +52,25 @@ def find_original(meta, manual, auto):
     번역 트랙은 2초짜리 조각을 앞뒤 맥락 없이 옮기기 때문에 오역이 섞인다.
     요약 단계에서 LLM 이 전체 맥락을 보고 번역하는 편이 나으므로 원본을 기본으로 쓴다.
     """
-    # 1) 유튜브가 '-orig' 로 표시한 원본 음성 인식 트랙이 가장 확실하다
-    for code in auto:
-        if code.endswith("-orig"):
-            return code, True
-    # 2) 메타데이터의 영상 언어(en-US 등)와 일치하는 트랙. 수동 자막을 먼저 본다
     lang = (meta.get("language") or "").split("-")[0]
+    # 1) 영상 언어와 일치하는 '-orig' 트랙. '-orig' 가 여러 개인 영상이 있으므로
+    #    (예: 한국어 영상에 en-US-orig 와 ko-orig 가 함께 존재) 언어로 먼저 거른다
+    if lang:
+        for code in auto:
+            if code.endswith("-orig") and code.split("-")[0] == lang:
+                return code, True
+    # 2) 영상 언어를 모르면 '-orig' 로 표시된 트랙을 그대로 믿는다
+    else:
+        for code in auto:
+            if code.endswith("-orig"):
+                return code, True
+    # 3) '-orig' 가 없으면 영상 언어와 일치하는 일반 트랙. 수동 자막을 먼저 본다
     if lang:
         for pool, is_auto in ((manual, False), (auto, True)):
             for code in pool:
                 if code.split("-")[0] == lang:
                     return code, is_auto
-    # 3) 수동 자막은 보통 원본 언어로 먼저 달린다. 유튜브가 준 순서를 그대로 믿는다
+    # 4) 수동 자막은 보통 원본 언어로 먼저 달린다. 유튜브가 준 순서를 그대로 믿는다
     #    (알파벳순으로 정렬하면 원본이 아닌 번역이 앞설 수 있다)
     for code in manual:
         return code, False
@@ -234,6 +241,30 @@ def write_json(path, meta, lang, is_auto, segments):
         json.dump(payload, fp, ensure_ascii=False, indent=2)
 
 
+def run_pipeline(md_path, summary_dir, model, template=None):
+    """자막 → 요약 JSON → 요약 md 까지 이어서 실행한다.
+
+    요약과 렌더링이 같은 템플릿을 보도록 두 단계에 같은 값을 넘긴다.
+    """
+    # realpath 를 쓰는 이유: ~/bin 등에 심볼릭 링크를 걸어도 나머지 스크립트를
+    # 링크가 아니라 실제 레포에서 찾게 하기 위해서다
+    here = os.path.dirname(os.path.realpath(__file__))
+    # 파일명을 두 스크립트가 각자 추측하면 어긋난다. 경로를 정해서 넘긴다
+    stem = os.path.join(summary_dir, os.path.splitext(os.path.basename(md_path))[0])
+    tpl_arg = ["--template", template] if template else []
+
+    summarize = [sys.executable, os.path.join(here, "summarize.py"), md_path,
+                 "--out", stem + ".json", "--model", model] + tpl_arg
+    if subprocess.run(summarize).returncode != 0:
+        print("[경고] 요약 생성에 실패했습니다. 자막은 정상 저장됐습니다.")
+        return
+
+    render = [sys.executable, os.path.join(here, "render.py"), stem + ".json",
+              "--to", "md", "-o", stem + ".md"] + tpl_arg
+    if subprocess.run(render).returncode != 0:
+        print("[경고] 요약 마크다운 렌더링에 실패했습니다. JSON 은 정상 저장됐습니다.")
+
+
 def main():
     ap = argparse.ArgumentParser(description="유튜브 자막을 타임스탬프와 함께 추출")
     ap.add_argument("url", nargs="?", help="유튜브 URL (--from-json 사용 시 생략 가능)")
@@ -241,10 +272,14 @@ def main():
     # 번역은 요약 단계에서 LLM 이 전체 맥락을 보고 하는 편이 낫다(README 참고)
     ap.add_argument("--lang", default="orig")
     ap.add_argument("--format", default="md", choices=["md", "json", "both"])
-    ap.add_argument("--outdir", default=".")
+    ap.add_argument("--outdir", default="transcripts")
     ap.add_argument("--chunk", type=float, default=45)
     ap.add_argument("--no-auto", action="store_true")
     ap.add_argument("--from-json", help="이미 추출한 .json 을 재가공(네트워크 요청 없음)")
+    ap.add_argument("--summary-dir", default="summaries")
+    ap.add_argument("--model", default="claude-opus-5", help="요약에 쓸 모델")
+    ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
+    ap.add_argument("--no-summary", action="store_true", help="자막만 추출하고 요약은 건너뜀")
     args = ap.parse_args()
 
     if args.from_json:
@@ -286,6 +321,13 @@ def main():
         writer(path, meta, lang, is_auto, segments)
         print("[{}] {}".format("덮어씀" if existed else "완료", path))
     print("[완료] 세그먼트 {}개".format(len(segments)))
+
+    if args.no_summary:
+        return
+    if args.format == "json":
+        print("[정보] 요약은 .md 자막을 입력으로 씁니다. --format md 또는 both 로 실행하세요.")
+        return
+    run_pipeline(stem + ".md", args.summary_dir, args.model, args.template)
 
 
 if __name__ == "__main__":

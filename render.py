@@ -14,7 +14,10 @@ import argparse
 import json
 import sys
 
-KAKAO_LIMIT = 1000      # 카카오톡 텍스트 메시지 실용 한도
+import template as tmpl
+
+# template.json 의 channels 에서 읽어 온다. main() 에서 실제 값으로 채운다
+KAKAO_LIMIT = 1000          # 카카오톡 텍스트 메시지 실용 한도
 SLACK_SECTION_LIMIT = 3000  # 슬랙 section 블록 text 한도
 
 
@@ -43,8 +46,9 @@ def render_slack(d):
     if len(body) > SLACK_SECTION_LIMIT:
         body = body[:SLACK_SECTION_LIMIT - 1] + "…"
 
-    ctx = "<{}|{}> · {} · {}".format(
-        video["url"], esc(video["channel"]), hhmmss(video["duration_sec"]), esc(d["disclaimer"]))
+    ctx = "<{}|{}> · {}".format(video["url"], esc(video["channel"]), hhmmss(video["duration_sec"]))
+    if d.get("disclaimer"):
+        ctx += " · " + esc(d["disclaimer"])
     return {"blocks": [
         {"type": "header", "text": {"type": "plain_text", "text": video["title"][:150], "emoji": True}},
         {"type": "section", "text": {"type": "mrkdwn", "text": body}},
@@ -62,10 +66,10 @@ def render_slack_thread(d):
             esc(sec["title"]), jump(video, sec["t"]), hhmmss(sec["t"]), "\n".join(lines))
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text[:SLACK_SECTION_LIMIT]}})
 
-    targets = d.get("entities", {}).get("targets") or []
-    if targets:
-        cells = "  ".join("`{} {}`".format(esc(x["asset"]), esc(x["value"])) for x in targets)
-        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "언급된 목표치 — " + cells}]})
+    figures = d.get("entities", {}).get("figures") or []
+    if figures:
+        cells = "  ".join("`{} {}`".format(esc(x["label"]), esc(x["value"])) for x in figures)
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "언급된 수치 — " + cells}]})
     return {"blocks": blocks}
 
 
@@ -77,8 +81,9 @@ def render_kakao(d):
     out = [video["title"], "", d["headline"], ""]
     for p in d["key_points"]:
         out.append("- {} ({})".format(p["text"], hhmmss(p["t"])))
-    out += ["", "{} · {}".format(video["channel"], hhmmss(video["duration_sec"])),
-            video["url"], d["disclaimer"]]
+    out += ["", "{} · {}".format(video["channel"], hhmmss(video["duration_sec"])), video["url"]]
+    if d.get("disclaimer"):
+        out.append(d["disclaimer"])
     text = "\n".join(out)
 
     if len(text) > KAKAO_LIMIT:
@@ -115,16 +120,18 @@ def render_md(d):
             out.append("- {} [`{}`]({})".format(p["text"], hhmmss(p["t"]), jump(video, p["t"])))
         out.append("")
 
-    targets = d.get("entities", {}).get("targets") or []
-    if targets:
-        out += ["## 언급된 목표치", "", "| 대상 | 수치 | 시점 |", "| --- | --- | --- |"]
-        for x in targets:
+    figures = d.get("entities", {}).get("figures") or []
+    if figures:
+        out += ["## 언급된 수치", "", "| 항목 | 값 | 시점 |", "| --- | --- | --- |"]
+        for x in figures:
             out.append("| {} | {} | [`{}`]({}) |".format(
-                x["asset"], x["value"], hhmmss(x["t"]), jump(video, x["t"])))
+                x["label"], x["value"], hhmmss(x["t"]), jump(video, x["t"])))
         out.append("")
 
-    out += ["---", "", "*{}*".format(d["disclaimer"]),
-            "원본 자막: `{}`".format(d["source"]["transcript"])]
+    out += ["---", ""]
+    if d.get("disclaimer"):
+        out.append("*{}*".format(d["disclaimer"]))
+    out.append("원본 자막: `{}`".format(d["source"]["transcript"]))
     return "\n".join(out)
 
 
@@ -137,7 +144,14 @@ def main():
     ap.add_argument("summary")
     ap.add_argument("--to", required=True, choices=sorted(RENDERERS))
     ap.add_argument("-o", "--out", help="파일로 저장(미지정 시 표준출력)")
+    ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     args = ap.parse_args()
+
+    # 채널 한도는 요약을 만들 때 쓴 것과 같은 템플릿에서 읽는다
+    global KAKAO_LIMIT, SLACK_SECTION_LIMIT
+    channels = tmpl.load(args.template)["channels"]
+    KAKAO_LIMIT = channels["kakao_chars"]
+    SLACK_SECTION_LIMIT = channels["slack_section_chars"]
 
     with open(args.summary, encoding="utf-8") as fp:
         data = json.load(fp)
