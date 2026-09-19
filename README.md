@@ -265,13 +265,14 @@ python3 summarize.py "transcripts/<제목>.md" --extract 12
 
 자막 트랙 자체가 없는 영상은 이 방식으로 추출할 수 없다. 그 경우 음성을 내려받아 Whisper 등으로 STT를 돌려야 한다.
 
-## 예시 결과물
+## 산출물
 
-`summaries/`, `transcripts/` 는 개인 산출물이라 저장소에 올리지 않는다(`.gitignore`, 폴더만 `.gitkeep` 으로 유지). 아래는 기본 옵션으로 돌린 결과 두 건의 요약이다. 원본 언어가 서로 달라 `--lang orig` 의 동작을 함께 보여준다.
+`summaries/`, `transcripts/` 는 개인 산출물이라 저장소에 올리지 않는다(`.gitignore`, 폴더만 `.gitkeep` 으로 유지). 영상 하나를 처리하면 다음 세 파일이 로컬에 생성된다.
 
-| 영상 | 원본 트랙 | 자막 | 요약 |
-| --- | --- | --- | --- |
-| [예시 영상 A](https://www.youtube.com/watch?v=VIDEO_ID) (19분 31초, 영어) | `en-orig` | 영어, 27개 문단 | 한국어 |
-| [예시 영상 B](https://www.youtube.com/watch?v=VIDEO_ID) (26분 54초, 한국어) | `ko-orig` | 한국어, 38개 문단 | 한국어 |
+| 파일 | 내용 |
+| --- | --- |
+| `transcripts/<제목>.md` | 영상 원본 언어 자막, 45초 문단, 타임스탬프 점프 링크 |
+| `summaries/<제목>.json` | 한국어 요약 (정본) |
+| `summaries/<제목>.md` | 한국어 요약 (읽기용) |
 
-각 영상마다 `transcripts/<제목>.md`, `summaries/<제목>.json`, `summaries/<제목>.md` 세 개가 로컬에 생성된다. 자막은 원본 언어, 요약은 한국어 — 파이프라인의 기본 방향을 그대로 보여주는 예시다.
+자막은 원본 언어(`--lang orig`), 요약은 한국어 — 영어 영상이든 한국어 영상이든 같은 방향으로 처리된다.
