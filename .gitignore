@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 *.json3
 .DS_Store
+
+# 개인 산출물 — 폴더만 유지
+summaries/*
+transcripts/*
+!summaries/.gitkeep
+!transcripts/.gitkeep
