@@ -70,11 +70,29 @@ https://www.youtube.com/watch?v=VIDEO_ID
 
 ## 무엇이 필요한가
 
+```bash
+./setup.sh
+```
+
+빠진 것을 찾아 알려주고, 설치할 수 있는 것은 물어본 뒤 설치한다.
+
 | | 용도 |
 | --- | --- |
 | Python 3.9+ | 전체 |
-| [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) (`brew install yt-dlp`) | 자막 받기 |
-| [`claude` CLI](https://claude.com/claude-code) — 로그인된 상태 | 요약 생성 |
+| [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) | 자막 받기 |
+| [`claude` CLI](https://claude.com/claude-code) — **로그인된 상태** | 요약 생성 |
+| `brew` | (선택) 위 설치를 자동화할 때만 |
+
+`setup.sh` 는 설치 여부뿐 아니라 **claude 로그인까지 실제 호출로 확인한다.** 설치돼 있어도 로그인이 안 돼 있으면 요약 단계에서야 실패하기 때문이다. 템플릿이 읽히는지, 스크립트 문법이 멀쩡한지도 함께 본다.
+
+| 실행 | 동작 |
+| --- | --- |
+| `./setup.sh` | 빠진 게 있으면 물어보고 설치 |
+| `./setup.sh --check` | 설치하지 않고 진단만 |
+| `./setup.sh --yes` | 묻지 않고 설치 |
+| `./setup.sh --no-probe` | 로그인 확인 호출을 건너뜀 |
+
+바로 쓸 수 있으면 종료 코드 `0`, 빠진 게 있으면 `1` 이다.
 
 요약은 `ANTHROPIC_API_KEY` 없이 `claude` CLI 를 헤드리스(`-p`)로 호출해 만든다. API 키 방식으로 바꾸려면 `summarize.py` 의 `call_model()` 하나만 교체하면 된다.
 
@@ -242,6 +260,7 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 | `render.py` | 카카오톡 / 슬랙 / 마크다운 변환 |
 | `extract.py` | (선택) TextRank 로 중요 문단 선별 |
 | `tests/verify_template.py` | 양식 강제 동작 검증 |
+| `setup.sh` | 실행 환경 점검 · 부족한 도구 설치 |
 
 ---
 
