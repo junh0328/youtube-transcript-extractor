@@ -214,7 +214,16 @@ python3 render.py "summaries/<제목>.json" --to slack \
 
 모든 항목에 `t`(초)가 붙는다. 점프 링크 생성과 원문 대조에 함께 쓰인다.
 
-`source` 에는 출처가 남는다 — 원본 자막 경로, 자막 트랙 언어, 사용 모델, 템플릿 버전(`youtube-summary-ko@1`), 부분 요약이면 선별 개수.
+`source` 에는 출처가 남는다.
+
+| 키 | 값 |
+| --- | --- |
+| `transcript` | 원본 자막 경로 |
+| `lang` / `auto_generated` | 자막 트랙 언어, 자동 생성 여부 |
+| `backend` / `model` | `claude-cli` 또는 `openai`, 사용한 모델 이름 |
+| `template` | `youtube-summary-ko@1` |
+| `generated_at` | 생성 시각 |
+| `extract` | 부분 요약일 때만 — `{kept, total}` |
 
 ---
 
