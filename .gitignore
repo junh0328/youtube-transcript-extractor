@@ -8,3 +8,8 @@ summaries/*
 transcripts/*
 !summaries/.gitkeep
 !transcripts/.gitkeep
+
+# 예시 산출물 하나만 공개 — README·architecture 에서 참조
+!transcripts/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.).md
+!summaries/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.).json
+!summaries/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.).md
