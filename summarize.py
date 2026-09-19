@@ -19,6 +19,7 @@ import subprocess
 import sys
 from datetime import datetime
 
+import extract
 import template as tmpl
 
 
@@ -250,6 +251,8 @@ def main():
     ap.add_argument("--out", help="출력 .json 경로를 직접 지정(--outdir 무시)")
     ap.add_argument("--model", default="claude-opus-5")
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
+    ap.add_argument("--extract", type=int, metavar="N",
+                    help="TextRank 로 상위 N개 문단만 골라 모델에 넘김(할루시네이션·토큰 절감)")
     args = ap.parse_args()
 
     tpl = tmpl.load(args.template)
@@ -257,9 +260,17 @@ def main():
     if not meta["body"]:
         sys.exit("[에러] 자막 본문이 비어 있습니다: " + args.transcript)
 
+    body = meta["body"]
+    if args.extract:
+        lines, kept, total = extract.select(args.transcript, args.extract)
+        body = "\n\n".join(lines)
+        print("[정보] 추출 단계: 문단 {}개 중 {}개 선별 ({:.0f}% 축소)".format(
+            total, kept, 100 * (1 - len(body) / len(meta["body"]))))
+        meta["source"]["extract"] = {"kept": kept, "total": total}
+
     print("[정보] 요약 생성 중... ({} · 템플릿 {} v{})".format(
         args.model, tpl.get("name", "?"), tpl.get("version", "?")))
-    prompt = tmpl.build_prompt(tpl, meta["body"])
+    prompt = tmpl.build_prompt(tpl, body)
     summary = call_model(prompt, args.model, meta["video"]["duration_sec"], tpl)
 
     meta["source"]["generated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
