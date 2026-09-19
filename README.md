@@ -1,9 +1,18 @@
 # yt-transcript-extractor
 
-유튜브 영상 URL을 넣으면 **타임스탬프가 붙은 자막**을 `.md` / `.json` 으로 추출하는 스크립트.
+유튜브 영상 URL을 넣으면 **타임스탬프가 붙은 자막**을 `.md` 로 추출하는 스크립트.
 
-- `.md` — 타임스탬프가 **해당 시점으로 바로 점프하는 링크**로 걸린 읽기용 문서
-- `.json` — `start` / `end` / `timestamp` / `text` 구조의 세그먼트 배열 (요약·RAG 색인·후처리용)
+옵션 없이 URL만 넣으면:
+
+- **한국어**로 나온다. 영어 영상이면 유튜브의 자동 번역 트랙을 쓴다.
+- **45초 단위로 문단화**된다. 자동 자막의 2초짜리 조각을 읽을 수 있는 덩어리로 묶는다.
+- **`.md` 한 개**만 생성된다. 타임스탬프는 해당 시점으로 바로 점프하는 링크로 걸린다.
+
+```markdown
+[`00:00:45`](https://www.youtube.com/watch?v=VIDEO_ID&t=45s) 자막 문단 텍스트가 45초 단위로 묶여 이어진다...
+```
+
+후처리·RAG 색인용 구조화 데이터가 필요하면 `--format json` 으로 `start` / `end` / `timestamp` / `text` 세그먼트 배열을 받을 수 있다.
 
 ## 요구 사항
 
@@ -20,24 +29,33 @@ python3 yt-transcript.py "<유튜브 URL>"
 
 | 옵션 | 설명 | 기본값 |
 | --- | --- | --- |
-| `--lang` | 선호 언어 코드(쉼표 구분, 앞에서부터 우선) | `ko,en` |
-| `--format` | `md` / `json` / `both` | `both` |
+| `--lang` | 선호 언어 코드(쉼표 구분, 앞에서부터 우선) | `ko,en-orig,en` |
+| `--format` | `md` / `json` / `both` | `md` |
 | `--outdir` | 출력 디렉터리 | 현재 디렉터리 |
-| `--chunk` | N초 단위로 세그먼트를 병합해 문단화 (0이면 원본 유지) | `0` |
+| `--chunk` | N초 단위로 세그먼트를 병합해 문단화 (0이면 원본 유지) | `45` |
 | `--no-auto` | 자동 생성(ASR) 자막 제외, 수동 자막만 사용 | off |
 | `--from-json` | 이미 추출한 `.json` 을 재가공 (네트워크 요청 없음) | - |
 
 ### 예시
 
 ```bash
-# 기본 (한국어 우선, md + json)
+# 기본 — 한국어, 45초 문단, md 한 개
 python3 yt-transcript.py "https://youtu.be/VIDEO_ID"
 
-# 영어 원본 트랙을 45초 단위로 묶어 읽기 좋게
-python3 yt-transcript.py "https://youtu.be/VIDEO_ID" --lang en-orig --chunk 45
+# 번역 품질이 중요할 때: 영어 원본 트랙
+python3 yt-transcript.py "https://youtu.be/VIDEO_ID" --lang en-orig
 
-# 이미 뽑은 json 으로 청크 버전만 다시 생성 (재요청 없음 → 429 회피)
-python3 yt-transcript.py --from-json "transcripts/제목_ko.json" --chunk 60 --format md
+# 나중에 다시 가공할 수 있게 json 까지 함께 저장
+python3 yt-transcript.py "https://youtu.be/VIDEO_ID" --format both
+
+# 이미 뽑은 json 으로 문단 길이만 바꿔 재생성 (재요청 없음 → 429 회피)
+python3 yt-transcript.py --from-json "transcripts/제목_ko.json" --chunk 90
+```
+
+`--lang` 기본값의 `en-orig,en` 은 **한국어 트랙이 아예 없는 영상을 위한 안전망**이다. 이 경우 영어로 대체하면서 다음 경고를 출력하므로, 결과가 한국어가 아니라는 사실이 조용히 묻히지 않는다.
+
+```
+[경고] 'ko' 자막이 없어 'en' 로 대체합니다. 한국어 결과가 아닙니다.
 ```
 
 출력 파일명은 `<영상 제목>_<언어>[_chunk<N>s].<확장자>` 형식이라 언어·청크 조합이 서로 덮어쓰지 않는다.
@@ -49,7 +67,8 @@ python3 yt-transcript.py --from-json "transcripts/제목_ko.json" --chunk 60 --f
 - `en-orig` — **원본 음성을 그대로 인식한 트랙** (가장 정확)
 - `ko`, `ja`, … — 원본을 기계 번역한 트랙
 
-정확도가 중요하면 `--lang en-orig` 처럼 원본 트랙을 쓰고, 번역본은 참고용으로 함께 뽑는 편이 좋다.
+기본값은 편의를 위해 한국어 번역본이지만, **기계 번역이라 오역이 섞인다.** 실제로 `transcripts/` 의 한국어 결과에는 인명 오기("Camirand" → "카메론"), 문맥 오역("October low"(10월 저점) → "10월 최저 기온") 같은 사례가 있다. 정확도가 중요한 용도라면 `--lang en-orig` 로 원본 트랙을 함께 뽑아 대조하는 편이 좋다.
+
 요청한 언어가 없으면 사용 가능한 트랙 목록을 출력한다.
 
 ## 구현 메모

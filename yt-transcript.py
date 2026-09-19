@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""유튜브 영상의 자막을 타임스탬프와 함께 .md / .json 으로 추출한다.
+"""유튜브 영상의 자막을 타임스탬프와 함께 .md 로 추출한다.
+
+기본 동작: 한국어 자막(영어 영상이면 자동 번역본)을 45초 단위로 문단화한 .md 한 개.
 
 사용법:
     yt-transcript.py <URL> [--lang ko] [--format md|json|both] [--outdir .]
-                          [--chunk 0] [--no-auto]
+                          [--chunk 45] [--no-auto] [--from-json PATH]
 
 옵션:
-    --lang    선호 언어 코드(쉼표로 여러 개, 앞에서부터 우선). 기본: ko,en
-    --format  출력 형식. 기본: both
+    --lang    선호 언어 코드(쉼표로 여러 개, 앞에서부터 우선). 기본: ko,en-orig,en
+    --format  출력 형식. 기본: md
     --outdir  출력 디렉터리. 기본: 현재 디렉터리
-    --chunk   N초 단위로 자막을 병합해 문단화(0이면 원본 세그먼트 유지). 기본: 0
+    --chunk   N초 단위로 자막을 병합해 문단화(0이면 원본 세그먼트 유지). 기본: 45
     --no-auto 자동 생성 자막(ASR)은 제외하고 수동 자막만 사용
+    --from-json  이미 추출한 .json 을 재가공(네트워크 요청 없음)
 """
 
 import argparse
@@ -34,6 +37,14 @@ def fetch_metadata(url):
     return json.loads(proc.stdout)
 
 
+def _warn_fallback(chosen, wanted):
+    """1순위 언어를 못 구하고 폴백했으면 조용히 넘어가지 않고 알린다."""
+    if wanted and chosen.split("-")[0] != wanted[0].split("-")[0]:
+        print("[경고] '{}' 자막이 없어 '{}' 로 대체합니다. 한국어 결과가 아닙니다.".format(
+            wanted[0], chosen))
+    return chosen
+
+
 def pick_language(meta, wanted, allow_auto):
     """선호 언어 순서대로 사용 가능한 자막 트랙을 고른다."""
     manual = meta.get("subtitles") or {}
@@ -43,11 +54,11 @@ def pick_language(meta, wanted, allow_auto):
         for pool, is_auto in ((manual, False), (auto, True)):
             # 정확히 일치 → ko
             if lang in pool:
-                return lang, is_auto
+                return _warn_fallback(lang, wanted), is_auto
             # 접두사 일치 → ko-KR, en-US, en-orig 등
             for code in pool:
                 if code.split("-")[0] == lang:
-                    return code, is_auto
+                    return _warn_fallback(code, wanted), is_auto
 
     available = sorted(set(manual) | set(auto))
     sys.exit(
@@ -196,10 +207,11 @@ def write_json(path, meta, lang, is_auto, segments):
 def main():
     ap = argparse.ArgumentParser(description="유튜브 자막을 타임스탬프와 함께 추출")
     ap.add_argument("url", nargs="?", help="유튜브 URL (--from-json 사용 시 생략 가능)")
-    ap.add_argument("--lang", default="ko,en")
-    ap.add_argument("--format", default="both", choices=["md", "json", "both"])
+    # 기본값: 한국어(영어 영상이면 자동 번역본) · 45초 문단화 · md 한 개
+    ap.add_argument("--lang", default="ko,en-orig,en")
+    ap.add_argument("--format", default="md", choices=["md", "json", "both"])
     ap.add_argument("--outdir", default=".")
-    ap.add_argument("--chunk", type=float, default=0)
+    ap.add_argument("--chunk", type=float, default=45)
     ap.add_argument("--no-auto", action="store_true")
     ap.add_argument("--from-json", help="이미 추출한 .json 을 재가공(네트워크 요청 없음)")
     args = ap.parse_args()
