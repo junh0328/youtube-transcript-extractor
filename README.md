@@ -343,3 +343,13 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 ## 더 읽을 것
 
 - [`architecture.md`](architecture.md) — 이 파이프라인을 **비개발 언어**로 설명한 문서. 각 단계에서 무슨 일이 일어나는지, 왜 그렇게 정했는지.
+
+---
+
+## 라이선스
+
+[MIT](LICENSE)
+
+외부 도구인 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 는 별도 프로젝트이며 [The Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE)(퍼블릭 도메인)다. 이 저장소는 `yt-dlp` 를 포함하지 않고 설치된 실행 파일을 호출만 하므로 라이선스가 섞이지 않는다.
+
+**라이선스와 별개로**, 이 도구로 받은 자막과 요약의 권리는 각 영상 저작권자에게 있다. 재배포·공개 전에 확인이 필요하다. `summaries/`, `transcripts/` 를 기본적으로 `.gitignore` 에 두는 이유다.
