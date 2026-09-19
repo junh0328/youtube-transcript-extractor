@@ -198,6 +198,25 @@ python3 render.py "summaries/<채널>/<제목>.json" --to slack \
   | curl -sX POST -H 'Content-type: application/json' -d @- "$SLACK_WEBHOOK_URL"
 ```
 
+### 채널의 새 영상 찾기
+
+```bash
+python3 discover.py channels.txt --days 7 --known done.txt --exclude '모음\.zip'
+```
+
+채널 목록에서 최근 N일 안에 올라온 영상을 찾아 JSON 한 줄씩 내보낸다(`id`·`url`·`title`·`channel`·`upload_date`·`duration`). 자막·요약은 하지 않는다 — 결과를 `yt-transcript.py` 에 넘기는 것은 부르는 쪽의 몫이다.
+
+- **상태를 저장하지 않는다.** 이미 처리한 영상은 `--known` 파일로 넘긴다. 줄 어디에 있든 영상 ID 를 뽑으므로 URL 목록이나 frontmatter 를 grep 한 결과를 그대로 넘겨도 된다.
+- **채널당 목록 요청 한 번**으로 훑고, 새 영상만 메타데이터를 다시 받는다. 목록 단계의 날짜는 "3일 전" 표시를 거꾸로 계산한 근사값이고 제목은 시청자 언어로 번역돼 있을 수 있어서, 날짜·`--exclude` 판정은 다시 받은 정확한 값(원제)으로 한다.
+- 멤버십 전용·방송 중 영상은 뺀다.
+- 종료 코드: `0` 전부 성공 · `1` 인자 오류 또는 모든 채널 실패 · `2` 일부 채널만 실패(결과는 나온다).
+
+```bash
+python3 discover.py channels.txt | while read -r line; do
+  python3 yt-transcript.py "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["url"])' "$line")"
+done
+```
+
 ---
 
 ## 요약은 어떤 모양인가
@@ -305,7 +324,9 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 | `grounding.py` | 숫자를 원문과 대조 (LLM 없음) |
 | `render.py` | 카카오톡 / 슬랙 / 마크다운 변환 |
 | `extract.py` | (선택) TextRank 로 중요 문단 선별 |
+| `discover.py` | 채널 목록에서 최근 N일의 새 영상 찾기 |
 | `tests/verify_template.py` | 양식 강제 동작 검증 |
+| `tests/verify_discover.py` | 새 영상 판정 규칙 검증 (네트워크 없음) |
 | `setup.sh` | 실행 환경 점검 · 부족한 도구 설치 |
 
 ---
