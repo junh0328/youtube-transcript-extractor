@@ -13,13 +13,27 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 
-SCALE_KO = {"천": 10 ** 3, "만": 10 ** 4, "억": 10 ** 8, "조": 10 ** 12}
 SCALE_EN = {"k": 10 ** 3, "m": 10 ** 6, "b": 10 ** 9, "t": 10 ** 12}
 # 한국어 화자는 영어 자릿수를 음차해 말하기도 한다 ('10밀리언 단위')
 SCALE_KO_LOAN = {"밀리언": 10 ** 6, "빌리언": 10 ** 9, "트릴리언": 10 ** 12}
+
+# 한국어 수 단위. '천만'·'십억' 같은 복합 단위를 먼저 맞춰야 '5천만' 이 5000 으로 잘리지 않는다
+SCALE_KO = {
+    "천만": 10 ** 7, "백만": 10 ** 6, "십만": 10 ** 5,
+    "천억": 10 ** 11, "백억": 10 ** 10, "십억": 10 ** 9,
+    "조": 10 ** 12, "억": 10 ** 8, "만": 10 ** 4, "천": 10 ** 3,
+}
+_KO_ALT = "|".join(sorted(SCALE_KO, key=len, reverse=True))
+# '3억 5천만' 처럼 이어지는 단위는 더해야 한 값이 된다 (= 3.5억)
+KO_RUN = re.compile(r"(?:[\d,]*\d(?:\.\d+)?\s*(?:" + _KO_ALT + r")\s*)+")
+KO_PART = re.compile(r"([\d,]*\d(?:\.\d+)?)\s*(" + _KO_ALT + r")")
+
+# 날짜·시각 표기의 숫자는 주장이 아니다. '10월 저점' 의 10 을 수치로 세면 안 된다
+DATE_UNIT = re.compile(r"\s*[월일시분초]")
 
 # 숫자로 세지 않을 값. 연도·한 자리 수는 우연히 일치할 확률이 높아 신호가 되지 못한다
 TRIVIAL = set(range(0, 10))
@@ -34,7 +48,6 @@ SCALE_WORD = {"thousand": 10 ** 3, "million": 10 ** 6,
 #   차단할 것은 'MB' 처럼 영숫자가 이어져 다른 토큰이 되는 경우뿐이다
 SCALED = [
     (re.compile(r"([\d,]*\d(?:\.\d+)?)\s*(밀리언|빌리언|트릴리언)"), SCALE_KO_LOAN, None),
-    (re.compile(r"([\d,]*\d(?:\.\d+)?)\s*([천만억조])"), SCALE_KO, None),
     (re.compile(r"([\d,]*\d(?:\.\d+)?)\s*([KkMmBbTt])s?(?![A-Za-z0-9])"), SCALE_EN, str.lower),
     (re.compile(r"([\d,]*\d(?:\.\d+)?)\s*(thousand|million|billion|trillion)s?", re.I),
      SCALE_WORD, str.lower),
@@ -64,9 +77,14 @@ def _aliases(value):
     """같은 값의 허용 표기들. 하나라도 원문에 있으면 근거가 있는 것으로 본다."""
     base = int(value) if value == int(value) else value
     out = {base}
-    # 0.618 같은 소수 비율은 말할 때 앞의 '0.' 을 빼고 '618' 이라 한다
-    if isinstance(base, float) and 0 < base < 1 and base * 1000 == int(base * 1000):
-        out.add(int(base * 1000))
+    # 0.618 같은 소수 비율은 말할 때 앞의 '0.' 을 빼고 '618' 이라 한다.
+    # 자리수만큼 올려야 한다 — 무조건 1000배 하면 0.5 가 500 이 되어
+    # '500달러' 를 '0.5배' 의 근거로 인정해버린다
+    if isinstance(base, float) and 0 < base < 1:
+        decimals = len(repr(base).split(".")[1]) if "." in repr(base) else 0
+        shifted = base * (10 ** decimals)
+        if decimals and abs(shifted - round(shifted)) < 1e-9:
+            out.add(int(round(shifted)))
     return {x for x in out if x not in TRIVIAL}
 
 
@@ -76,6 +94,19 @@ def _extract(text):
         return []
     text = expand_ranges(text)
     out, consumed = [], []
+
+    # 한국어 수 단위는 이어질 수 있어 한 덩어리로 읽고 더한다 ('3억 5천만' = 3.5억)
+    for m in KO_RUN.finditer(text):
+        total = 0.0
+        for part in KO_PART.finditer(m.group()):
+            value = _to_float(part.group(1))
+            if value is None:
+                total = None
+                break
+            total += value * SCALE_KO[part.group(2)]
+        if total:
+            out.append((m.start(), _aliases(total)))
+            consumed.append((m.start(), m.end()))
 
     for pattern, scale, key in SCALED:
         for m in pattern.finditer(text):
@@ -87,6 +118,8 @@ def _extract(text):
 
     for m in BARE.finditer(text):
         if any(s <= m.start() < e for s, e in consumed):
+            continue
+        if DATE_UNIT.match(text, m.end()):  # '10월', '16일' 의 숫자는 주장이 아니다
             continue
         value = _to_float(m.group())
         if value is not None:
@@ -170,9 +203,23 @@ def main():
         summary = json.load(fp)
 
     transcript = summary.get("source", {}).get("transcript")
+    if not transcript:
+        sys.exit("[에러] 요약에 source.transcript 가 없습니다: " + args.summary)
+
+    # 요약에 적힌 자막 경로는 생성 당시 기준의 상대 경로다.
+    # 어느 디렉터리에서 실행해도 찾도록 현재 위치와 요약 파일 주변을 함께 살핀다
+    here = os.path.dirname(os.path.abspath(args.summary))
+    for root in (os.getcwd(), here, os.path.dirname(here)):
+        candidate = transcript if os.path.isabs(transcript) else os.path.join(root, transcript)
+        if os.path.isfile(candidate):
+            transcript = candidate
+            break
+    else:
+        sys.exit("[에러] 자막 파일을 찾지 못했습니다: {}".format(transcript))
+
     rows = parse_transcript(transcript)
     if not rows:
-        sys.exit("[에러] 자막을 읽지 못했습니다: {}".format(transcript))
+        sys.exit("[에러] 자막에서 타임스탬프 문단을 읽지 못했습니다(형식 불일치): {}".format(transcript))
 
     results = audit(summary, rows, args.window)
     counts = {"근거 있음": 0, "구간 밖": 0, "원문에 없음": 0}

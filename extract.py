@@ -38,6 +38,21 @@ def ngrams(text, n=3):
     return Counter(flat[i:i + n] for i in range(max(0, len(flat) - n + 1)))
 
 
+def weighted_vectors(texts, n=3):
+    """n-gram 에 IDF 가중치를 준다.
+
+    가중치가 없으면 공백이나 조사처럼 어디에나 있는 조각이 유사도를 지배해서
+    모든 문단이 고만고만하게 닮아 보이고, 결국 중요도 순위가 거의 무작위가 된다.
+    """
+    grams = [ngrams(t, n) for t in texts]
+    total = len(grams)
+    df = Counter()
+    for g in grams:
+        for key in g:
+            df[key] += 1
+    return [{k: v * math.log(1 + total / (1 + df[k])) for k, v in g.items()} for g in grams]
+
+
 def cosine(a, b):
     common = set(a) & set(b)
     if not common:
@@ -54,7 +69,7 @@ def textrank(texts, damping=0.85, rounds=40):
     if n <= 1:
         return [1.0] * n
 
-    vectors = [ngrams(t) for t in texts]
+    vectors = weighted_vectors(texts)
     sim = [[0.0] * n for _ in range(n)]
     for i in range(n):
         for j in range(i + 1, n):
@@ -83,9 +98,12 @@ def textrank(texts, damping=0.85, rounds=40):
 
 def select(path, top):
     """상위 top 개 문단을 골라 원본 줄 그대로, 시간순으로 돌려준다."""
+    if not isinstance(top, int) or top < 1:
+        sys.exit("[에러] 선별할 문단 수는 1 이상이어야 합니다: {}".format(top))
     chunks = read_chunks(path)
     if not chunks:
-        raise ValueError("자막 문단을 읽지 못했습니다: " + path)
+        # 타임스탬프 링크가 없는 자막(예: URL 없이 --from-json 으로 만든 것)은 선별할 수 없다
+        sys.exit("[에러] 타임스탬프 문단을 찾지 못했습니다(형식 불일치): {}".format(path))
     if top >= len(chunks):
         return [c[2] for c in chunks], len(chunks), len(chunks)
 

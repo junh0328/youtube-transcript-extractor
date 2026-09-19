@@ -132,6 +132,12 @@ def render_md(d):
     if d.get("disclaimer"):
         out.append("*{}*".format(d["disclaimer"]))
     out.append("원본 자막: `{}`".format(d["source"]["transcript"]))
+
+    # 일부 문단만 보고 만든 요약은 그 사실이 드러나야 한다.
+    # 그렇지 않으면 전체를 읽고 만든 요약과 구분할 수 없다
+    picked = d["source"].get("extract")
+    if picked:
+        out.append("※ 이 요약은 자막 {total}개 문단 중 {kept}개만 보고 작성됐습니다.".format(**picked))
     return "\n".join(out)
 
 

@@ -241,7 +241,7 @@ def write_json(path, meta, lang, is_auto, segments):
         json.dump(payload, fp, ensure_ascii=False, indent=2)
 
 
-def run_pipeline(md_path, summary_dir, model, template=None):
+def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None):
     """자막 → 요약 JSON → 요약 md 까지 이어서 실행한다.
 
     요약과 렌더링이 같은 템플릿을 보도록 두 단계에 같은 값을 넘긴다.
@@ -255,6 +255,8 @@ def run_pipeline(md_path, summary_dir, model, template=None):
 
     summarize = [sys.executable, os.path.join(here, "summarize.py"), md_path,
                  "--out", stem + ".json", "--model", model] + tpl_arg
+    if extract_top:
+        summarize += ["--extract", str(extract_top)]
     if subprocess.run(summarize).returncode != 0:
         print("[경고] 요약 생성에 실패했습니다. 자막은 정상 저장됐습니다.")
         return
@@ -279,6 +281,8 @@ def main():
     ap.add_argument("--summary-dir", default="summaries")
     ap.add_argument("--model", default="claude-opus-5", help="요약에 쓸 모델")
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
+    ap.add_argument("--extract", type=int, metavar="N",
+                    help="요약 전에 TextRank 로 상위 N개 문단만 고름(내용이 줄어드니 긴 영상에만)")
     ap.add_argument("--no-summary", action="store_true", help="자막만 추출하고 요약은 건너뜀")
     args = ap.parse_args()
 
@@ -327,7 +331,7 @@ def main():
     if args.format == "json":
         print("[정보] 요약은 .md 자막을 입력으로 씁니다. --format md 또는 both 로 실행하세요.")
         return
-    run_pipeline(stem + ".md", args.summary_dir, args.model, args.template)
+    run_pipeline(stem + ".md", args.summary_dir, args.model, args.template, args.extract)
 
 
 if __name__ == "__main__":
