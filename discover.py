@@ -135,6 +135,8 @@ def select(metas, since, excludes):
             log("[제외] 방송 중·예정: {}".format(title))
             continue
         if (m.get("upload_date") or "") < cutoff:
+            # 근사 날짜의 하루 여유로 후보에 들었다가 정확한 업로드일로 떨어진 것
+            log("[제외] 기간 밖({}): {}".format(m.get("upload_date") or "날짜 없음", title))
             continue
         hit = next((p for p in excludes if p.search(title)), None)
         if hit:
