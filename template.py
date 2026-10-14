@@ -47,6 +47,22 @@ def apply_preset(tpl, name):
     return out
 
 
+def with_scenes(tpl):
+    """장면 후보(scenes[])를 함께 요청하는 새 템플릿을 돌려준다.
+
+    장면을 잘라 낼 때만 필요한 필드라서 기본 프롬프트에는 넣지 않는다.
+    """
+    scenes = tpl.get("scenes")
+    if not scenes:
+        raise ValueError("템플릿에 'scenes' 가 없어 장면 후보를 요청할 수 없습니다. "
+                         "레포의 template.json 에서 scenes 블록을 옮겨 오거나 --scenes 없이 실행하세요")
+    out = dict(tpl)
+    out["limits"] = dict(tpl["limits"], **scenes.get("limits", {}))
+    out["schema"] = dict(tpl["schema"], scenes=scenes["schema"])
+    out["rules"] = list(tpl["rules"]) + list(scenes.get("rules", []))
+    return out
+
+
 def placeholders(tpl):
     """규칙·스키마 문장에 끼워 넣을 값들. limits 의 [min, max] 는 _min/_max 로 펼친다."""
     out = {"output_language": tpl.get("output_language", "한국어")}

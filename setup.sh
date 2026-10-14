@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# 실행에 필요한 것들이 갖춰졌는지 확인하고, 빠진 것을 설치한다.
+# 실행에 필요한 것들이 갖춰졌는지 확인하고, yt-dlp·ffmpeg 가 없으면 물어본 뒤 설치한다
+# (ffmpeg 는 brew 가 있을 때만). python3 와 claude CLI 는 설치 방법만 알려 준다.
 #
 #   ./setup.sh             빠진 게 있으면 물어보고 설치
 #   ./setup.sh --check     설치하지 않고 진단만
 #   ./setup.sh --yes       묻지 않고 설치
 #   ./setup.sh --no-probe  claude 로그인 확인용 호출을 건너뜀
 #
-# 종료 코드 0 = 바로 쓸 수 있음, 1 = 빠진 게 있음
+# 종료 코드 0 = 바로 쓸 수 있음, 1 = 빠진 게 있음, 2 = 모르는 옵션
 
 set -uo pipefail
 
@@ -19,17 +20,26 @@ for arg in "$@"; do
     --check) MODE="check" ;;
     --yes|-y) MODE="yes" ;;
     --no-probe) PROBE=0 ;;
-    --help|-h) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "모르는 옵션: $arg (--check, --yes, --no-probe, --help)"; exit 2 ;;
   esac
 done
 
-# .env 가 있으면 먼저 읽는다. summarize.py 도 같은 파일을 보므로 판단 기준이 일치한다
+# .env 가 있으면 먼저 읽는다. summarize.py 의 load_env_file() 과 같은 규칙으로 읽어야
+# 점검 결과와 실제 요약에 쓰는 값이 같다: 셸에서 export 한 값이 우선하고, 같은 키가 두 번
+# 있으면 앞의 값을 쓴다. 그래서 source 로 읽지 않고 이미 설정된 키는 건너뛴다
 if [ -f "$REPO/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . "$REPO/.env"
-  set +a
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in ''|\#*|[!A-Za-z_]*) continue ;; *=*) ;; *) continue ;; esac
+    key="${line%%=*}"; key="${key%"${key##*[![:space:]]}"}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    val="${line#*=}"; val="${val#"${val%%[![:space:]]*}"}"; val="${val%"${val##*[![:space:]]}"}"
+    if [ "${#val}" -ge 2 ] && { [[ "$val" == \"*\" ]] || [[ "$val" == \'*\' ]]; }; then
+      val="${val:1:${#val}-2}"
+    fi
+    [ -n "${!key+x}" ] || export "$key=$val"
+  done < "$REPO/.env"
 fi
 
 if [ -t 1 ]; then
@@ -104,11 +114,12 @@ else
       ok "yt-dlp" "$(yt-dlp --version 2>/dev/null) (방금 설치)"
     else
       bad "yt-dlp" "설치 실패"
-      note "brew install yt-dlp  또는  pip3 install -U yt-dlp"
+      note "brew install yt-dlp  또는  pipx install yt-dlp"
+      note "pip3 --user 로 설치했다면 \$(python3 -m site --user-base)/bin 을 PATH 에 추가한 뒤 다시 실행하세요"
       MISSING=1
     fi
   else
-    note "brew install yt-dlp  또는  pip3 install -U yt-dlp"
+    note "brew install yt-dlp  또는  pipx install yt-dlp"
     MISSING=1
   fi
 fi
@@ -152,7 +163,7 @@ elif command -v claude >/dev/null 2>&1; then
 else
   bad "요약 백엔드" "없음 — claude CLI 도 YT_LLM_BASE_URL 도 없습니다"
   note "https://claude.com/claude-code 에서 설치 후 로그인, 또는"
-  note "export YT_LLM_BASE_URL=... YT_LLM_MODEL=... YT_LLM_API_KEY=..."
+  note "cp .env.example .env 후 쓸 AI 블록 하나의 주석을 푸세요"
   note "자막만 쓰려면: python3 yt-transcript.py \"\$URL\" --no-summary"
   MISSING=1; BACKEND_OK=0
 fi
@@ -183,7 +194,7 @@ echo
 echo "저장소 구성"
 echo "────────────────────────────────────────────────"
 
-for f in yt-transcript.py summarize.py render.py grounding.py extract.py frames.py template.py template.json; do
+for f in yt-transcript.py summarize.py render.py grounding.py extract.py frames.py discover.py template.py template.json; do
   if [ -f "$REPO/$f" ]; then
     ok "$f"
   else
@@ -203,10 +214,10 @@ if [ "$MISSING" = "0" ] && command -v python3 >/dev/null 2>&1; then
 
   if (cd "$REPO" && python3 -c '
 import ast, sys
-for f in ["yt-transcript.py","summarize.py","render.py","grounding.py","extract.py","frames.py","template.py"]:
+for f in ["yt-transcript.py","summarize.py","render.py","grounding.py","extract.py","frames.py","discover.py","template.py"]:
     ast.parse(open(f, encoding="utf-8").read())
 ' 2>/dev/null); then
-    ok "스크립트 문법" "7개 정상"
+    ok "스크립트 문법" "8개 정상"
   else
     bad "스크립트 문법" "오류"
     MISSING=1
@@ -231,5 +242,7 @@ echo "  → summaries/<채널>/<제목>.json   요약 (정본)"
 echo "  → summaries/<채널>/<제목>.md     요약 (읽기용)"
 echo
 echo "  요약 분량: --preset short | default | long | easy"
-echo "  장면 붙이기: python3 frames.py \"summaries/<채널>/<제목>.json\" 02:40 --attach   (ffmpeg 필요)"
+echo "  장면 자동 선택: python3 yt-transcript.py \"<유튜브 URL>\" --frames-review   (ffmpeg 필요)"
+echo "  장면 직접 지정: python3 frames.py \"summaries/<채널>/<제목>.json\" 02:40 --attach"
+echo "  숫자 대조: python3 grounding.py \"summaries/<채널>/<제목>.json\""
 echo

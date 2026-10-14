@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """요약 템플릿이 실제로 강제되는지 확인한다.
 
-SCHEMA_PROMPT 가 명시한 규칙을 하나씩 위반한 페이로드를 만들어
-validate() 와 각 렌더러에 통과시킨 뒤, 결과를 세 가지로 분류한다.
+template.json 의 규칙을 하나씩 위반한 페이로드를 만들어
+summarize.check() 와 각 렌더러에 통과시킨 뒤, 결과를 세 가지로 분류한다.
 
-  차단  — validate() 가 잡아서 실패시킴 (템플릿이 강제됨)
+  차단  — check() 가 치명적 문제로 잡음 (모델에 되먹여 다시 받음)
   통과  — 규칙 위반인데 아무 일도 없이 지나감 (템플릿이 강제되지 않음)
   터짐  — 렌더 단계에서 예외 (검증 구멍이 실제 크래시로 이어짐)
 """
@@ -83,7 +83,7 @@ CASES = [
 
 DURATION = BASE["video"]["duration_sec"]
 print("영상 길이: {}초\n".format(DURATION))
-print("{:<34} {:<10} {}".format("위반 내용", "validate", "렌더러(md/kakao/slack)"))
+print("{:<34} {:<10} {}".format("위반 내용", "check", "렌더러(md/kakao/slack)"))
 print("-" * 76)
 
 for label, fn in CASES:
@@ -100,7 +100,7 @@ for label, fn in CASES:
     except Exception as exc:
         verdict, checked = "터짐({})".format(type(exc).__name__), None
 
-    # 2단계: validate 를 통과한 값이 렌더러에서 살아남는가
+    # 2단계: check 를 통과한 값이 렌더러에서 살아남는가
     results = []
     if checked is not None:
         for name, fn2 in (("md", rd.render_md), ("kakao", rd.render_kakao), ("slack", rd.render_slack)):

@@ -87,6 +87,50 @@ check("캡션 없는 장면", "![02:50 장면](" in md and "*[`02:50`](https://w
 del doc["frames"]
 check("frames 가 없으면 이미지 없음", "![" in render.render_md(doc), False)
 
+# --- --scenes: 요약의 후보를 시각으로
+with tempfile.TemporaryDirectory() as d:
+    summary = os.path.join(d, "a.json")
+    with open(summary, "w", encoding="utf-8") as fp:
+        json.dump({"video": {}, "scenes": [{"t": 160, "caption": "차트"}, {"t": 400, "caption": ""}]}, fp)
+    check("scenes[] → (초, 캡션)", fr.scene_specs(summary), [(160, "차트"), (400, "")])
+
+# --- --review: 여러 장 찍을 시각
+check("후보 시각부터 간격대로", fr.burst(100, 900, (0, 10, 20)), [100, 110, 120])
+check("영상 끝을 넘는 시각은 뺌", fr.burst(885, 900, (0, 10, 20)), [885, 895])
+check("길이를 모르면 그대로", fr.burst(100, None, (0, 10)), [100, 110])
+
+# --- --review: 모델 응답 해석 (모델은 부르지 않는다)
+groups = [("차트", [(100, "a0"), (110, "a1"), (120, "a2")]), ("", [(400, "b0")]), ("표", [(700, "c0")])]
+sent = []
+
+
+def fake(reply):
+    def send(parts, backend):
+        sent.append(parts)
+        return reply, None
+    return send
+
+
+picks = fr.review(groups, {}, send=fake(json.dumps({"picks": [
+    {"candidate": 1, "pick": 3, "reason": "차트가 다 그려짐"},
+    {"candidate": 2, "pick": 0, "reason": "얼굴만"},
+    {"candidate": 3, "pick": 9, "reason": "없는 번호"}]})))
+check("고른 번호 · 버림 · 범위 밖 번호는 버림",
+      picks, [(3, "차트가 다 그려짐"), (0, "얼굴만"), (0, "없는 번호")])
+check("이미지 5장이 순서대로 실림",
+      [v for k, v in sent[0] if k == "image"], ["a0", "a1", "a2", "b0", "c0"])
+check("후보 캡션과 이미지 번호가 이미지 앞에 붙음",
+      ("## 후보 1 — 자막상 예상: 차트" in "\n".join(v for k, v in sent[0] if k == "text"),
+       ("text", "이미지 1-2 (01:50)") in sent[0]), (True, True))
+check("답이 빠진 후보는 버림",
+      fr.review(groups, {}, send=fake('{"picks": [{"candidate": 1, "pick": 1}]}')),
+      [(1, ""), (0, "판단 없음"), (0, "판단 없음")])
+import contextlib, io
+fr.time.sleep = lambda s: None
+with contextlib.redirect_stderr(io.StringIO()):
+    check("끝내 JSON 이 아니면 None (호출부가 모두 버림)",
+          fr.review(groups, {}, send=fake("모르겠습니다")), None)
+
 print()
 print("실패 {}건".format(len(failures)) if failures else "모두 통과")
 sys.exit(1 if failures else 0)

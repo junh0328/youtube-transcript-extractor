@@ -1,20 +1,33 @@
 #!/usr/bin/env python3
-"""유튜브 영상의 자막을 타임스탬프와 함께 .md 로 추출한다.
+"""유튜브 URL 하나로 자막 → 한국어 요약 → 읽기용 md 까지 만든다.
 
-기본 동작: 영상 원본 언어 자막을 45초 단위로 문단화한 .md 한 개.
-한국어가 필요하면 요약 단계에서 옮긴다(유튜브 번역 트랙은 오역이 섞인다).
+기본 동작: 원본 언어 자막을 45초 단위 문단으로 묶어 transcripts/<채널>/<제목>.md 로 저장하고,
+이어서 summarize.py 로 요약해 summaries/<채널>/<제목>.json 과 .md 를 만든다.
+자막만 필요하면 --no-summary 를 붙인다.
+한국어 번역은 요약 단계에서 한다(유튜브 번역 트랙은 오역이 섞인다).
 
 사용법:
-    yt-transcript.py <URL> [--lang orig] [--format md|json|both] [--outdir .]
-                          [--chunk 45] [--no-auto] [--from-json PATH] [--preset short]
+    yt-transcript.py <URL> [--lang orig] [--format md|json|both] [--outdir transcripts]
+                          [--chunk 45] [--no-auto] [--from-json PATH]
+                          [--summary-dir summaries] [--model M] [--template PATH]
+                          [--preset short|default|long|easy] [--extract N] [--no-summary]
+                          [--frames | --frames-review]
 
 옵션:
-    --lang    'orig'(원본 언어 자동 탐지) 또는 언어 코드. 쉼표로 여러 개. 기본: orig
-    --format  출력 형식. 기본: md
-    --outdir  출력 디렉터리. 기본: 현재 디렉터리
-    --chunk   N초 단위로 자막을 병합해 문단화(0이면 원본 세그먼트 유지). 기본: 45
-    --no-auto 자동 생성 자막(ASR)은 제외하고 수동 자막만 사용
-    --from-json  이미 추출한 .json 을 재가공(네트워크 요청 없음)
+    --lang         'orig'(원본 언어 자동 탐지) 또는 언어 코드. 쉼표로 여러 개. 기본: orig
+    --format       자막 저장 형식. 요약은 .md 자막을 입력으로 쓰므로 json 만 고르면 자막 저장 후 멈춘다. 기본: md
+    --outdir       자막 저장 폴더. 그 아래 <채널>/ 폴더에 쓴다. 기본: transcripts
+    --chunk        N초 단위로 자막을 묶어 문단으로 만든다(0이면 원본 세그먼트 유지). 기본: 45
+    --no-auto      자동 생성 자막(ASR)은 빼고 수동 자막만 쓴다
+    --from-json    이미 추출한 자막 .json 을 다시 가공한다(네트워크 요청 없음)
+    --summary-dir  요약 저장 폴더. 그 아래 <채널>/ 폴더에 쓴다. 기본: summaries
+    --model        요약(과 --frames-review 판별)에 쓸 모델. 기본: YT_LLM_MODEL, 없으면 claude-opus-5
+    --template     요약 템플릿 .json. 기본: 레포의 template.json
+    --preset       요약 분량·난이도: short · default · long · easy. 기본: default
+    --extract N    요약 전에 TextRank 로 상위 N개 문단만 고른다. 빠지는 내용이 생기므로 긴 영상에만 쓴다
+    --no-summary   자막만 추출하고 요약은 건너뛴다
+    --frames       요약 모델이 자막에서 고른 장면 후보(scenes[])를 잘라 읽기용 md 에 붙인다 (ffmpeg 필요)
+    --frames-review  --frames 에 더해, 후보마다 이미지 3장을 찍고 모델이 보고 한 장을 고르거나 버린다
 """
 
 import argparse
@@ -241,8 +254,11 @@ def write_json(path, meta, lang, is_auto, segments):
         json.dump(payload, fp, ensure_ascii=False, indent=2)
 
 
-def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None, preset=None):
-    """자막 → 요약 JSON → 요약 md 까지 이어서 실행한다.
+def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None, preset=None,
+                 frames=None):
+    """자막 → 요약 JSON → (장면) → 요약 md 까지 이어서 실행한다.
+
+    frames: None · "plain"(후보 시각에서 한 장씩) · "review"(모델이 이미지를 보고 고름)
 
     요약과 렌더링이 같은 템플릿을 보도록 두 단계에 같은 값을 넘긴다.
     """
@@ -262,9 +278,22 @@ def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None, p
         summarize += ["--extract", str(extract_top)]
     if preset:
         summarize += ["--preset", preset]
+    if frames:
+        summarize += ["--scenes"]
     if subprocess.run(summarize).returncode != 0:
         print("[경고] 요약 생성에 실패했습니다. 자막은 정상 저장됐습니다.")
         return
+
+    if frames:
+        # 장면은 덤이다. 실패해도 요약 md 는 만든다
+        grab = [sys.executable, os.path.join(here, "frames.py"), stem + ".json",
+                "--scenes", "--attach", "--no-hint"]
+        if frames == "review":
+            grab += ["--review"] + (["--model", model] if model else [])
+        if subprocess.run(grab).returncode != 0:
+            print("[경고] 장면을 잘라 내지 못한 것이 있습니다(위 [실패]·[에러] 줄 참고). "
+                  "잘라 낸 장면만으로 요약 md 를 만듭니다.")
+            print("[안내] 다시 하려면: python3 frames.py \"{}.json\" --scenes --attach".format(stem))
 
     render = [sys.executable, os.path.join(here, "render.py"), stem + ".json",
               "--to", "md", "-o", stem + ".md"] + tpl_arg
@@ -277,19 +306,27 @@ def main():
     ap.add_argument("url", nargs="?", help="유튜브 URL (--from-json 사용 시 생략 가능)")
     # 기본값: 원본 언어 트랙 · 45초 문단화 · md 한 개
     # 번역은 요약 단계에서 LLM 이 전체 맥락을 보고 하는 편이 낫다(README 참고)
-    ap.add_argument("--lang", default="orig")
-    ap.add_argument("--format", default="md", choices=["md", "json", "both"])
-    ap.add_argument("--outdir", default="transcripts")
-    ap.add_argument("--chunk", type=float, default=45)
-    ap.add_argument("--no-auto", action="store_true")
-    ap.add_argument("--from-json", help="이미 추출한 .json 을 재가공(네트워크 요청 없음)")
-    ap.add_argument("--summary-dir", default="summaries")
-    ap.add_argument("--model", help="요약에 쓸 모델 (기본: claude-opus-5, 또는 YT_LLM_MODEL)")
+    ap.add_argument("--lang", default="orig",
+                    help="'orig'(원본 언어 자동 탐지) 또는 언어 코드. 쉼표로 여러 개 (기본: orig)")
+    ap.add_argument("--format", default="md", choices=["md", "json", "both"],
+                    help="자막 저장 형식. 요약은 .md 를 입력으로 쓴다 (기본: md)")
+    ap.add_argument("--outdir", default="transcripts", help="자막 저장 폴더 (기본: transcripts/<채널>)")
+    ap.add_argument("--chunk", type=float, default=45,
+                    help="N초 단위로 문단화, 0이면 원본 세그먼트 (기본: 45)")
+    ap.add_argument("--no-auto", action="store_true", help="자동 생성 자막(ASR)은 빼고 수동 자막만 씀")
+    ap.add_argument("--from-json", help="이미 추출한 자막 .json 을 다시 가공(네트워크 요청 없음)")
+    ap.add_argument("--summary-dir", default="summaries", help="요약 저장 폴더 (기본: summaries/<채널>)")
+    ap.add_argument("--model", help="요약(과 --frames-review 판별)에 쓸 모델 (기본: YT_LLM_MODEL, 없으면 claude-opus-5)")
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     ap.add_argument("--extract", type=int, metavar="N",
-                    help="요약 전에 TextRank 로 상위 N개 문단만 고름(내용이 줄어드니 긴 영상에만)")
+                    help="요약 전에 TextRank 로 상위 N개 문단만 골라 모델에 넘김. "
+                         "입력 토큰과 지어낼 여지가 줄지만 빠지는 내용이 생기므로 긴 영상에만 씀")
     ap.add_argument("--preset", help="요약 분량·난이도: short · default · long · easy (template.json 의 presets)")
     ap.add_argument("--no-summary", action="store_true", help="자막만 추출하고 요약은 건너뜀")
+    ap.add_argument("--frames", action="store_true",
+                    help="요약 모델이 자막에서 고른 장면 후보(scenes[])를 잘라 읽기용 md 에 붙임 (ffmpeg 필요)")
+    ap.add_argument("--frames-review", action="store_true",
+                    help="--frames + 후보마다 이미지 3장을 찍어 모델이 보고 한 장을 고르거나 버림")
     args = ap.parse_args()
 
     if args.from_json:
@@ -341,7 +378,8 @@ def main():
     if args.format == "json":
         print("[정보] 요약은 .md 자막을 입력으로 씁니다. --format md 또는 both 로 실행하세요.")
         return
-    run_pipeline(stem + ".md", summary_dir, args.model, args.template, args.extract, args.preset)
+    frames = "review" if args.frames_review else "plain" if args.frames else None
+    run_pipeline(stem + ".md", summary_dir, args.model, args.template, args.extract, args.preset, frames)
 
 
 if __name__ == "__main__":

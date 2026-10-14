@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """자막 .md 를 읽어 한국어 요약 JSON 을 만든다.
 
-    summarize.py <자막.md> [--outdir summaries] [--model claude-opus-5]
+    summarize.py <자막.md> [--outdir summaries | --out PATH] [--model claude-opus-5]
+                 [--template PATH] [--preset default] [--extract N] [--scenes]
+    summarize.py --selftest   # 자막 없이 모델 연결만 확인
 
-요약 생성은 로컬에 설치된 `claude` CLI 를 헤드리스(-p)로 호출한다.
-별도의 API 키 없이 기존 로그인을 그대로 쓰기 위한 선택이다.
-ANTHROPIC_API_KEY 를 쓰는 SDK 방식으로 바꾸려면 call_model() 만 교체하면 된다.
+요약은 기본으로 로컬 `claude` CLI 를 헤드리스(-p)로 불러 만든다. 별도 API 키 없이
+기존 로그인을 그대로 쓴다. .env 나 환경변수에 YT_LLM_BASE_URL 을 두면 OpenAI 호환
+/chat/completions 로 보낸다. 이때 YT_LLM_MODEL(또는 --model)이 필요하고, 키는
+YT_LLM_API_KEY 로 넘긴다. 호출 방식을 바꾸려면 send() 와 send_images() 를 고친다.
 
 영상 메타데이터(제목·URL·길이 등)는 모델에게 맡기지 않고 자막 헤더에서 직접 읽는다.
 모델은 요약 본문만 만든다 — 틀릴 수 있는 값을 모델에게 넘기지 않기 위해서다.
 """
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -92,7 +96,8 @@ def resolve_backend(model):
     기본은 로컬 `claude` CLI 다. 환경변수 YT_LLM_BASE_URL 이 있으면
     OpenAI 호환 엔드포인트로 보낸다 — OpenAI, Groq, Together, OpenRouter,
     vLLM, Ollama, Gemini(OpenAI 호환 경로)가 모두 같은 규격이라
-    구현 하나로 커버된다.
+    구현 하나로 모두 부를 수 있다. 키는 YT_LLM_API_KEY 로 넘기고,
+    없으면 Authorization 헤더를 붙이지 않는다.
     """
     load_env_file()
     base = os.environ.get("YT_LLM_BASE_URL", "").strip()
@@ -117,12 +122,16 @@ def _call_claude_cli(prompt, backend):
     proc = subprocess.run(["claude", "-p", "--model", backend["model"]],
                           input=prompt, capture_output=True, text=True)
     if proc.returncode != 0:
-        return None, "claude 호출 실패: " + (proc.stderr or "").strip()[:150]
+        return None, "claude 호출 실패(터미널에서 claude 를 실행해 로그인 상태를 확인하세요): " + \
+            (proc.stderr or "").strip()[:150]
     return proc.stdout, None
 
 
 def _call_openai(prompt, backend, json_mode=True):
-    """OpenAI 호환 /chat/completions 로 보낸다. 표준 라이브러리만 쓴다."""
+    """OpenAI 호환 /chat/completions 로 보낸다. 표준 라이브러리만 쓴다.
+
+    prompt 는 문자열이거나, 이미지를 섞을 때는 content 파트 배열이다.
+    """
     url = backend["base_url"].rstrip("/") + "/chat/completions"
     payload = {"model": backend["model"],
                "messages": [{"role": "user", "content": prompt}]}
@@ -156,6 +165,33 @@ def send(prompt, backend):
     return _call_claude_cli(prompt, backend)
 
 
+def send_images(parts, backend):
+    """글과 이미지를 섞어 보낸다. parts 는 ("text", 문자열) · ("image", 경로) 의 목록.
+
+    OpenAI 호환 경로는 이미지를 data URI 로 싣는다. claude CLI 는 이미지를 직접 받지 못하므로
+    파일 경로를 적어 주고 Read 도구로 열어 보게 한다.
+    """
+    if backend["kind"] == "openai":
+        content = []
+        for kind, value in parts:
+            if kind == "text":
+                content.append({"type": "text", "text": value})
+            else:
+                with open(value, "rb") as fp:
+                    data = base64.b64encode(fp.read()).decode("ascii")
+                content.append({"type": "image_url",
+                                "image_url": {"url": "data:image/jpeg;base64," + data}})
+        return _call_openai(content, backend)
+    prompt = "\n".join(value if kind == "text" else "(이미지 파일: {} — Read 로 열어 보세요)".format(
+        os.path.abspath(value)) for kind, value in parts)
+    proc = subprocess.run(["claude", "-p", "--model", backend["model"], "--allowedTools", "Read"],
+                          input=prompt, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None, "claude 호출 실패(터미널에서 claude 를 실행해 로그인 상태를 확인하세요): " + \
+            (proc.stderr or "").strip()[:150]
+    return proc.stdout, None
+
+
 def call_model(prompt, backend, duration, tpl, retries=3):
     """템플릿을 만족하는 요약이 나올 때까지 모델을 호출한다.
 
@@ -180,17 +216,29 @@ def call_model(prompt, backend, duration, tpl, retries=3):
                 problems = ["응답이 올바른 JSON 이 아닙니다"]
             else:
                 problems, soft = check(data, duration, tpl)
-                if not problems:
+                # 섹션은 영상 순서라서 넘친 만큼 뒤에서 자르면 영상 후반부(대개 결론)가 통째로 빠진다.
+                # 재시도가 남아 있으면 합쳐서 다시 쓰게 하고, 자르기는 마지막 수단으로 둔다
+                lo, hi = tmpl.span(tpl, "sections")
+                sections = data.get("sections") if isinstance(data, dict) else None
+                if not problems and isinstance(sections, list) and len(sections) > hi \
+                        and attempt < retries - 1:
+                    problems = ["sections 가 {}개로 상한 {}개를 넘습니다. 영상 끝까지 다루되 이웃한 섹션을 합쳐 "
+                                "{}~{}개로 다시 쓰세요".format(len(sections), hi, lo, hi)]
+                elif not problems:
+                    if isinstance(sections, list) and len(sections) > hi:
+                        print("[경고] {}회 시도했지만 섹션이 여전히 {}개라 상한 {}개에 맞춰 이웃 섹션을 합칩니다".format(
+                            retries, len(sections), hi), file=sys.stderr)
                     return repair(data, duration, soft, tpl)
 
-        print("[재시도] 템플릿 위반 {}건 ({}/{}회차)".format(
+        print("[재시도] 문제 {}건 ({}/{}회차)".format(
             len(problems), attempt + 1, retries), file=sys.stderr)
         for p in problems[:5]:
             print("         · " + p, file=sys.stderr)
         feedback = ("\n\n(직전 응답의 문제: " + " / ".join(problems[:8]) +
                     ". 스키마를 정확히 지켜 JSON 만 다시 출력하세요.)")
 
-    sys.exit("[에러] {}회 시도했지만 템플릿을 만족하는 요약을 얻지 못했습니다.".format(retries))
+    sys.exit("[에러] {}회 시도했지만 요약을 얻지 못했습니다. 위 [재시도] 줄에서 원인을 확인하세요. "
+             "전송 실패라면 python3 summarize.py --selftest 로 연결부터 확인합니다.".format(retries))
 
 
 def extract_json(text):
@@ -298,19 +346,30 @@ def repair(data, duration, soft, tpl):
 
     hi = tmpl.span(tpl, "key_points")[1]
     if len(data["key_points"]) > hi:
-        print("[보정] key_points {}개 중 뒤의 {}개를 버립니다".format(
+        print("[보정] 핵심(key_points) {}개 중 뒤의 {}개를 버립니다".format(
             len(data["key_points"]), len(data["key_points"]) - hi), file=sys.stderr)
         data["key_points"] = data["key_points"][:hi]
     data["key_points"] = [fix_entry(e) for e in data["key_points"]]
 
     hi = tmpl.span(tpl, "sections")[1]
     if len(data["sections"]) > hi:
-        print("[보정] sections {}개 중 뒤의 {}개를 버립니다".format(
-            len(data["sections"]), len(data["sections"]) - hi), file=sys.stderr)
-        data["sections"] = data["sections"][:hi]
+        # 섹션은 영상 순서다. 뒤에서 자르면 후반부(대개 결론)가 통째로 빠지므로
+        # 항목이 가장 적은 이웃 두 섹션을 하나로 합쳐 가며 줄인다
+        print("[보정] 섹션(sections) {}개를 이웃끼리 합쳐 {}개로 줄입니다".format(
+            len(data["sections"]), hi), file=sys.stderr)
+        secs = data["sections"]
+        while len(secs) > hi:
+            i = min(range(len(secs) - 1), key=lambda k: len(secs[k]["points"]) + len(secs[k + 1]["points"]))
+            a, b = secs[i], secs.pop(i + 1)
+            a["title"] = "{} · {}".format(a["title"], b["title"])
+            a["points"] = a["points"] + b["points"]
     max_points = tmpl.span(tpl, "section_points")[1]
     for sec in data["sections"]:
         sec["t"] = min(max(_as_seconds(sec.get("t")) or 0, 0), duration)
+        if len(sec["points"]) > max_points:
+            # 이웃 섹션을 합친 뒤 넘친 항목도 여기서 잘린다. 조용히 버리지 않고 알린다
+            print("[보정] 섹션 '{}' 의 항목 {}개 중 뒤의 {}개를 버립니다".format(
+                sec["title"], len(sec["points"]), len(sec["points"]) - max_points), file=sys.stderr)
         sec["points"] = [fix_entry(e) for e in sec["points"][:max_points]]
 
     # entities 는 없어도 되는 필드다. 모양이 깨진 항목만 조용히 버리지 말고 알린다
@@ -329,14 +388,40 @@ def repair(data, duration, soft, tpl):
             kept.append(fig)
     dropped = (len(figures) if isinstance(figures, list) else 0) - len(kept)
     if dropped:
-        print("[보정] figures {}개가 label/value/t 를 갖추지 못해 제외했습니다".format(dropped),
+        print("[보정] 수치(figures) {}개가 label/value/t 를 갖추지 못해 뺐습니다".format(dropped),
               file=sys.stderr)
     entities["figures"] = kept
     data["entities"] = entities
 
     if not isinstance(data.get("disclaimer"), str):
         data["disclaimer"] = ""
+    if "scenes" in tpl["limits"]:
+        data["scenes"] = repair_scenes(data.get("scenes"), duration, tmpl.span(tpl, "scenes")[1])
     return data
+
+
+def repair_scenes(scenes, duration, limit, gap=15):
+    """장면 후보를 시각순으로 정리한다. 모양이 깨진 항목과 앞 후보와 gap 초 안에 붙은 항목은 빼고,
+    시각을 0~duration 으로 누른 뒤 앞에서부터 limit 개만 남긴다.
+
+    장면은 없어도 요약이 성립하므로 되먹여 다시 받지 않고 여기서만 맞춘다.
+    """
+    kept = []
+    for s in scenes if isinstance(scenes, list) else []:
+        sec = _as_seconds(s.get("t")) if isinstance(s, dict) else None
+        if sec is None:
+            continue
+        caption = s.get("caption") if isinstance(s.get("caption"), str) else ""
+        kept.append({"t": min(max(sec, 0), duration), "caption": caption.strip()})
+    out = []
+    for s in sorted(kept, key=lambda s: s["t"]):
+        if not out or s["t"] - out[-1]["t"] >= gap:
+            out.append(s)
+    total = len(scenes) if isinstance(scenes, list) else 0
+    if total != len(out[:limit]):
+        print("[보정] 장면 후보(scenes) {}개 → {}개 (모양이 깨졌거나 {}초 안에 겹친 후보, 상한 {}개)".format(
+            total, len(out[:limit]), gap, limit), file=sys.stderr)
+    return out[:limit]
 
 
 def safe_name(title):
@@ -347,16 +432,19 @@ def safe_name(title):
 def main():
     ap = argparse.ArgumentParser(description="자막을 한국어 요약 JSON 으로 변환")
     ap.add_argument("transcript", nargs="?", help="yt-transcript.py 가 만든 .md")
-    ap.add_argument("--outdir", default="summaries")
+    ap.add_argument("--outdir", default="summaries", help="요약 저장 폴더 (기본: summaries)")
     ap.add_argument("--out", help="출력 .json 경로를 직접 지정(--outdir 무시)")
     ap.add_argument("--model", help="모델 이름 (기본: claude-opus-5, 또는 YT_LLM_MODEL)")
     ap.add_argument("--selftest", action="store_true",
                     help="자막 없이 모델 호출만 확인하고 끝냄")
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     ap.add_argument("--extract", type=int, metavar="N",
-                    help="TextRank 로 상위 N개 문단만 골라 모델에 넘김(할루시네이션·토큰 절감)")
+                    help="요약 전에 TextRank 로 상위 N개 문단만 골라 모델에 넘김. "
+                         "입력 토큰과 지어낼 여지가 줄지만 빠지는 내용이 생기므로 긴 영상에만 씀")
     ap.add_argument("--preset", default="default",
                     help="요약 분량·난이도 (template.json 의 presets: short·default·long·easy)")
+    ap.add_argument("--scenes", action="store_true",
+                    help="화면을 봐야 이해되는 장면 후보(scenes[])를 함께 받음 (frames.py --scenes 가 씀)")
     args = ap.parse_args()
     backend = resolve_backend(args.model)
 
@@ -375,6 +463,8 @@ def main():
 
     try:
         tpl = tmpl.apply_preset(tmpl.load(args.template), args.preset)
+        if args.scenes:
+            tpl = tmpl.with_scenes(tpl)
     except ValueError as e:
         sys.exit("[에러] {}".format(e))
     meta = parse_transcript(args.transcript)
@@ -389,8 +479,9 @@ def main():
             total, kept, 100 * (1 - len(body) / len(meta["body"]))))
         meta["source"]["extract"] = {"kept": kept, "total": total}
 
-    print("[정보] 요약 생성 중... ({} · 템플릿 {} v{} · 프리셋 {})".format(
-        describe_backend(backend), tpl.get("name", "?"), tpl.get("version", "?"), args.preset))
+    print("[정보] 요약 생성 중... ({} · 템플릿 {} v{} · 프리셋 {}{})".format(
+        describe_backend(backend), tpl.get("name", "?"), tpl.get("version", "?"), args.preset,
+        " · 장면 후보" if args.scenes else ""))
     prompt = tmpl.build_prompt(tpl, body)
     summary = call_model(prompt, backend, meta["video"]["duration_sec"], tpl)
 
@@ -410,7 +501,9 @@ def main():
         json.dump(payload, fp, ensure_ascii=False, indent=2)
 
     print("[{}] {}".format("덮어씀" if existed else "완료", path))
-    print("[완료] 핵심 {}개 · 섹션 {}개".format(len(payload["key_points"]), len(payload["sections"])))
+    print("[완료] 핵심 {}개 · 섹션 {}개{}".format(
+        len(payload["key_points"]), len(payload["sections"]),
+        " · 장면 후보 {}개".format(len(payload["scenes"])) if "scenes" in payload else ""))
     return 0
 
 

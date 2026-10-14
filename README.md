@@ -3,6 +3,7 @@
 유튜브 URL 하나로 **자막 추출 → 한국어 요약 → 메신저용 렌더링**까지 한 번에. 요약 분량·난이도는 프리셋(짧게·기본·길게·쉽게)으로 고르고, 필요하면 영상 장면을 잘라 읽기용 문서에 붙인다.
 
 ```bash
+./setup.sh            # 빠진 도구를 찾아 설치하고, 요약에 쓸 AI 가 실제로 불리는지 확인한다
 python3 yt-transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
@@ -16,16 +17,16 @@ python3 yt-transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
 flowchart TD
     A["유튜브 URL"] --> B["yt-transcript.py<br/>자막 받기 · 45초 문단화"]
     B --> C["transcripts/&lt;채널&gt;/&lt;제목&gt;.md"]
-    C --> D["summarize.py<br/>Claude 가 한국어 요약"]
+    C --> D["summarize.py<br/>LLM 이 한국어 요약"]
     D --> E{"template.json<br/>양식대로인가"}
     E -->|"구조 깨짐"| D
     E -->|"통과 · 보정"| F["summaries/&lt;채널&gt;/&lt;제목&gt;.json"]
-    F --> G["grounding.py<br/>숫자를 원문과 대조"]
+    F -.-> G["grounding.py (따로 실행)<br/>숫자를 원문과 대조"]
     F --> H["render.py"]
     H --> I1["카카오톡 텍스트"]
     H --> I2["슬랙 Block Kit"]
     H --> I3["summaries/&lt;채널&gt;/&lt;제목&gt;.md"]
-    F -.-> J["frames.py (선택)<br/>사람이 고른 시각의 장면"]
+    F -.-> J["frames.py (선택)<br/>사람이 적은 시각 또는<br/>요약이 고른 장면 후보"]
     J --> K["summaries/&lt;채널&gt;/assets/"]
     J -.->|"frames[] 기록"| F
 
@@ -33,7 +34,7 @@ flowchart TD
     style G fill:#e6f4ea,stroke:#34a853
 ```
 
-`yt-transcript.py` 하나를 실행하면 **자막 → 요약 → 읽기용 md** 까지 자동으로 이어진다. `grounding.py`, 슬랙·카카오톡 렌더링, 장면 캡처(`frames.py`)는 따로 부른다.
+`yt-transcript.py` 하나를 실행하면 **자막 → 요약 → 읽기용 md** 까지 자동으로 이어진다. `--frames` 를 주면 장면 캡처(`frames.py`)까지 이어진다. `grounding.py` 와 슬랙·카카오톡 렌더링은 따로 부른다.
 
 ---
 
@@ -48,7 +49,7 @@ flowchart TD
 
 채널(업로더)별로 폴더가 자동으로 나뉜다. 같은 URL 을 다시 돌리면 세 파일 모두 덮어쓴다. 덮어쓴 경우 `[완료]` 대신 `[덮어씀]` 으로 표시된다.
 
-`summaries/`, `transcripts/` 는 개인 산출물이라 저장소에 올리지 않는다(`.gitignore`, 폴더만 `.gitkeep` 으로 유지). **예시 한 건만 예외로 포함돼 있다** — 40분짜리 한국어 기술 강연(옵시디언 × Claude Code)의 자막 55문단과 그 요약, `frames.py` 로 붙인 장면 7장으로, 위 네 가지 산출물이 실제로 어떤 모양인지 바로 볼 수 있다.
+`summaries/`, `transcripts/` 는 개인 산출물이라 저장소에 올리지 않는다(`.gitignore`, 폴더만 `.gitkeep` 으로 유지). **예시 한 건만 예외로 포함돼 있다** — 40분짜리 한국어 기술 강연(옵시디언 × Claude Code)의 자막 55문단과 그 요약(`--preset long`, 섹션 14개), `frames.py` 로 붙인 장면 7장으로, 위 네 가지 산출물이 실제로 어떤 모양인지 바로 볼 수 있다.
 
 자막 문단은 이런 모양이다.
 
@@ -74,6 +75,8 @@ https://www.youtube.com/watch?v=VIDEO_ID
 
 ## 무엇이 필요한가
 
+저장소를 받은 뒤 그 폴더에서 실행한다. 표준 라이브러리만 써서 `pip install` 은 필요 없다.
+
 ```bash
 ./setup.sh
 ```
@@ -84,11 +87,11 @@ https://www.youtube.com/watch?v=VIDEO_ID
 | --- | --- |
 | Python 3.9+ | 전체 |
 | [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) | 자막 받기 |
-| [`claude` CLI](https://claude.com/claude-code) — **로그인된 상태** | 요약 생성 |
-| [`ffmpeg`](https://ffmpeg.org) | (선택) `frames.py` 장면 캡처에만. 없어도 나머지는 동작 |
+| [`claude` CLI](https://claude.com/claude-code) — 설치 후 터미널에서 `claude` 를 한 번 실행해 로그인한다. `setup.sh` 가 설치해 주지 않는다 | 요약 생성 (`.env` 로 다른 LLM 을 쓰면 필요 없음) |
+| [`ffmpeg`](https://ffmpeg.org) | (선택) 장면 캡처(`frames.py`, `--frames`)에만. 없어도 나머지는 동작 |
 | `brew` | (선택) 위 설치를 자동화할 때만 |
 
-`setup.sh` 는 설치 여부뿐 아니라 **claude 로그인까지 실제 호출로 확인한다.** 설치돼 있어도 로그인이 안 돼 있으면 요약 단계에서야 실패하기 때문이다. 템플릿이 읽히는지, 스크립트 문법이 멀쩡한지도 함께 본다.
+`setup.sh` 는 설치 여부뿐 아니라 **claude 로그인까지 실제 호출로 확인한다.** 설치돼 있어도 로그인이 안 돼 있으면 요약 단계에서야 실패하기 때문이다. 템플릿이 읽히는지, 스크립트 8개의 문법이 멀쩡한지도 함께 본다.
 
 | 실행 | 동작 |
 | --- | --- |
@@ -97,20 +100,24 @@ https://www.youtube.com/watch?v=VIDEO_ID
 | `./setup.sh --yes` | 묻지 않고 설치 |
 | `./setup.sh --no-probe` | 로그인 확인 호출을 건너뜀 |
 
-바로 쓸 수 있으면 종료 코드 `0`, 빠진 게 있으면 `1` 이다.
+바로 쓸 수 있으면 종료 코드 `0`, 빠진 게 있으면 `1`, 모르는 옵션이면 `2` 다. `./setup.sh --help` 로 사용법을 볼 수 있다.
 
 기본은 `claude` CLI 다. 키 없이 기존 로그인을 그대로 쓴다.
 
 ### 다른 LLM 을 쓰려면
 
-**코드를 고칠 필요 없다.** 환경변수 3개면 OpenAI 호환 엔드포인트로 보낸다 — OpenAI, Gemini, Groq, Together, OpenRouter, vLLM, Ollama 가 모두 같은 규격이라 구현 하나로 커버된다.
+**코드를 고칠 필요 없다.** 환경변수 3개면 OpenAI 호환 엔드포인트로 보낸다. OpenAI, Gemini, Groq, Together, OpenRouter, vLLM, Ollama 가 모두 같은 규격이라 구현 하나로 모두 부를 수 있다. `--frames-review` 를 쓰려면 이미지를 읽는 모델이어야 한다.
+
+1. `.env.example` 을 `.env` 로 복사한다. `.env` 는 `.gitignore` 에 있다.
+2. `.env` 에서 쓸 제공자 블록 **하나**를 골라 각 줄 앞의 `# ` 를 지우고 키를 채운다. 복사만 하면 모든 줄이 주석이라 아무것도 바뀌지 않는다.
+3. 저장한 뒤 `./setup.sh` 를 다시 실행하면 새 백엔드로 호출되는지 확인한다.
 
 ```bash
-cp .env.example .env    # .env 는 .gitignore 에 있다
+cp .env.example .env
 ```
 
 ```ini
-# .env — Gemini 무료 티어 예시
+# .env — Gemini 무료 티어 예시 (주석을 푼 뒤의 모습)
 YT_LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
 YT_LLM_API_KEY=발급받은_키
 YT_LLM_MODEL=gemini-2.5-flash
@@ -119,10 +126,10 @@ YT_LLM_MODEL=gemini-2.5-flash
 | 변수 | 없으면 |
 | --- | --- |
 | `YT_LLM_BASE_URL` | claude CLI 를 쓴다 |
-| `YT_LLM_MODEL` | (BASE_URL 이 있으면) 오류 — 모델 이름이 필요하다 |
+| `YT_LLM_MODEL` | (BASE_URL 이 있으면) `--model` 을 주지 않는 한 오류다 |
 | `YT_LLM_API_KEY` | 인증 헤더를 붙이지 않는다 (Ollama 같은 로컬 서버용) |
 
-셸에서 `export` 한 값이 `.env` 보다 우선한다. 한 번만 다르게 돌려볼 때 쓴다.
+셸에서 `export` 한 값이 `.env` 보다 우선한다(`setup.sh` · `summarize.py` 모두 같다). 한 번만 다르게 돌려볼 때 쓴다.
 
 ```bash
 YT_LLM_MODEL=gemini-2.5-pro python3 yt-transcript.py "$URL"
@@ -148,20 +155,24 @@ python3 summarize.py --selftest      # [정상] generativelanguage.googleapis.co
 python3 yt-transcript.py "<유튜브 URL>"
 ```
 
+아래 예시의 `$URL` 은 `URL="https://www.youtube.com/watch?v=VIDEO_ID"` 로 먼저 넣어 둔다.
+
 | 옵션 | 설명 | 기본값 |
 | --- | --- | --- |
 | `--lang` | `orig`(원본 언어 자동 탐지) 또는 언어 코드(쉼표 구분) | `orig` |
-| `--format` | `md` / `json` / `both` | `md` |
+| `--format` | `md` / `json` / `both`. 요약은 `.md` 자막을 입력으로 쓰므로 `json` 만 고르면 자막 저장 후 멈춘다 | `md` |
 | `--chunk` | N초 단위로 문단화 (0이면 원본 세그먼트 유지) | `45` |
 | `--outdir` | 자막 출력 디렉터리 (그 안에 채널별 하위 폴더 생성) | `transcripts` |
 | `--summary-dir` | 요약 출력 디렉터리 (그 안에 채널별 하위 폴더 생성) | `summaries` |
-| `--model` | 요약에 쓸 모델 | `claude-opus-5` |
+| `--model` | 요약(과 `--frames-review` 판별)에 쓸 모델 | `claude-opus-5` (`YT_LLM_MODEL` 이 있으면 그 값) |
 | `--template` | 요약 양식 파일 | `template.json` |
 | `--preset` | 요약 분량·난이도 — `short` · `default` · `long` · `easy` | `default` |
 | `--extract N` | 요약 전에 중요 문단 N개만 선별 | off |
 | `--no-summary` | 자막만 뽑고 멈춤 | off |
 | `--no-auto` | 자동 생성 자막 제외, 수동 자막만 | off |
 | `--from-json` | 이미 뽑은 `.json` 재가공 (네트워크 요청 없음) | - |
+| `--frames` | 요약 모델이 자막을 보고 고른 장면 후보(최대 6곳)를 잘라 읽기용 md 에 붙인다 (ffmpeg 필요) | off |
+| `--frames-review` | `--frames` 에 더해 후보마다 0·10·20초 뒤 세 장을 찍고, 모델이 이미지를 보고 한 장을 고르거나 버린다 | off |
 
 ```bash
 # 한국어 번역 트랙을 그대로 받고 싶을 때
@@ -172,6 +183,9 @@ python3 yt-transcript.py "$URL" --format both
 
 # 짧게 요약
 python3 yt-transcript.py "$URL" --preset short
+
+# 화면이 중요한 영상: 장면까지 골라 붙이기
+python3 yt-transcript.py "$URL" --frames-review
 
 # 이미 뽑은 json 으로 문단 길이만 바꿔 재생성 (429 회피)
 python3 yt-transcript.py --from-json "transcripts/채널/제목.json" --chunk 90
@@ -184,8 +198,11 @@ python3 yt-transcript.py "$URL" --outdir ko --lang ko
 ### 단계별로 따로
 
 ```bash
-# 요약만 다시 (프리셋을 바꿔 다시 만들 때도)
-python3 summarize.py "transcripts/<채널>/<제목>.md" --outdir "summaries/<채널>" [--preset long]
+# 요약만 다시 (프리셋을 바꿀 때도) — JSON 만 바뀌므로 md 를 다시 렌더링하고,
+# frames[] 는 비므로 장면을 붙였던 경우 다시 뽑는다
+python3 summarize.py "transcripts/<채널>/<제목>.md" --outdir "summaries/<채널>" [--preset long] [--scenes]
+python3 frames.py "summaries/<채널>/<제목>.json" 02:40 --attach    # 장면을 붙였던 경우만
+python3 render.py "summaries/<채널>/<제목>.json" --to md -o "summaries/<채널>/<제목>.md"
 
 # 메신저용 렌더링
 python3 render.py "summaries/<채널>/<제목>.json" --to kakao          # 순수 텍스트
@@ -200,7 +217,12 @@ python3 grounding.py "summaries/<채널>/<제목>.json" [--window 90] [--verbose
 python3 extract.py "transcripts/<채널>/<제목>.md" --top 12
 ```
 
-표준출력으로 나가므로 그대로 파이프할 수 있다.
+| 스크립트 | 그 밖의 옵션 |
+| --- | --- |
+| `summarize.py` | `--out PATH` 출력 경로 직접 지정(`--outdir` 무시) · `--model` · `--template` · `--extract N` · `--scenes` 장면 후보도 함께 받음 · `--selftest` 연결만 확인 |
+| `render.py` | `--to {kakao,slack,slack-thread,md}` 필수 · `-o/--out` 파일로 저장 · `--template` |
+
+`render.py` 는 `-o` 가 없으면 표준출력으로 내보내므로 그대로 파이프할 수 있다.
 
 ```bash
 python3 render.py "summaries/<채널>/<제목>.json" --to slack \
@@ -209,18 +231,33 @@ python3 render.py "summaries/<채널>/<제목>.json" --to slack \
 
 ### 영상 장면 붙이기
 
+**화면이 이해를 돕는 시각**(화자가 띄운 도식·슬라이드, 시연 결과, 수치가 찍힌 화면)의 장면만 이미지로 잘라 읽기용 md 에 붙인다. 시각을 고르는 방법은 셋이다.
+
+| 방법 | 누가 고르나 | 명령 |
+| --- | --- | --- |
+| 직접 지정 | 사람이 요약을 읽고 시각을 적는다 | `frames.py <요약.json> 02:40 --attach` |
+| 장면 후보 | 요약 모델이 자막에서 화면을 가리키는 곳을 최대 6곳 고른다 | `yt-transcript.py <URL> --frames` |
+| 장면 후보 + 판별 | 위에 더해, 후보마다 이미지 3장을 찍고 모델이 보고 한 장을 고르거나 버린다 | `yt-transcript.py <URL> --frames-review` |
+
 ```bash
+# 직접 지정
 python3 frames.py "summaries/<채널>/<제목>.json" "02:40=화자가 그린 개념도" 08:20 --attach
+python3 render.py "summaries/<채널>/<제목>.json" --to md -o "summaries/<채널>/<제목>.md"
+
+# 이미 만든 요약에 장면 후보로 붙이기 (summarize.py --scenes 로 만든 요약만)
+python3 frames.py "summaries/<채널>/<제목>.json" --scenes --review --attach
 python3 render.py "summaries/<채널>/<제목>.json" --to md -o "summaries/<채널>/<제목>.md"
 ```
 
-요약을 읽다가 **화면이 이해를 돕는 시각**(화자가 띄운 도식·슬라이드, 시연 결과, 수치가 찍힌 화면)을 골라 그 장면만 이미지로 잘라 낸다. 영상 전체를 받지 않고 yt-dlp 가 알려 준 스트림 주소에서 ffmpeg 로 한 장면만 꺼내므로 장면당 3~4초, 720p 한 장이 100KB 안팎이다.
+`yt-transcript.py --frames` · `--frames-review` 는 요약 → 장면 → 렌더링을 한 번에 하므로 따로 렌더링하지 않아도 된다. 영상 전체를 받지 않고 yt-dlp 가 알려 준 스트림 주소에서 ffmpeg 로 한 장면만 꺼내므로 장면당 3~4초, 720p 한 장이 100KB 안팎이다.
 
 - 시각은 `SS` · `MM:SS` · `HH:MM:SS`, `=` 뒤는 캡션이다.
 - `--attach` 는 요약 JSON 의 `frames[]` 에 `{t, file, caption}` 을 기록한다. `render.py --to md` 가 각 장면을 그 시각이 속한 섹션 아래에 이미지와 점프 링크 캡션으로 넣는다. 카카오톡·슬랙 렌더에는 들어가지 않는다.
-- 어느 시각을 뽑을지는 **사람이 고른다.** 같은 구간이라도 몇 초 차이로 도식이 덜 그려졌거나 빈 화면이 잡히므로, 뽑은 뒤 열어 보고 아니면 지우고 몇 초 옮겨 다시 뽑는다. 지운 이미지는 다음 `--attach` 때 `frames[]` 에서도 빠진다.
-- 첫 인자로 URL 이나 자막 `.md` 를 넘기면 `summaries/<채널>/assets/<제목> NN.jpg` 에 쓰기만 한다. `--outdir` · `--name` · `--start` 로 위치·이름·첫 번호를 바꿀 수 있다 — 다른 저장소가 자기 규약대로 받아 갈 때 쓴다.
-- 요약을 다시 만들면(`summarize.py`) JSON 을 새로 쓰므로 `frames[]` 가 사라진다. 이미지 파일은 남으니 `--attach` 만 다시 하면 된다.
+- 같은 구간이라도 몇 초 차이로 도식이 덜 그려졌거나 빈 화면이 잡힌다. 직접 지정했다면 뽑은 뒤 열어 보고, 아니면 지우고 몇 초 옮겨 다시 뽑는다. 지운 이미지는 다음 `--attach` 때 `frames[]` 에서도 빠진다.
+- `--scenes` 는 요약 JSON 의 `scenes[]`(장면 후보)를 시각으로 쓴다. 자막의 시각은 45초 문단 단위라 판별 없이 한 장만 찍으면 말하는 얼굴이나 빈 화면이 섞일 수 있다.
+- `--review` 는 후보마다 0·10·20초 뒤 세 장을 찍어 모델에게 보여 준다. 판별 응답을 끝내 받지 못하면 장면을 붙이지 않는다. 판별 모델은 `--model` 로 바꾼다(기본: `YT_LLM_MODEL`, 없으면 `claude-opus-5`).
+- 첫 인자로 URL 이나 자막 `.md` 를 넘기면 `summaries/<채널>/assets/<제목> NN.jpg` 에 쓰기만 한다. `--outdir` · `--name` · `--start` 로 위치·이름·첫 번호를, `--height` 로 최대 세로 해상도(기본 720)를, `--summary-dir` 로 기본 저장 위치의 상위 폴더(기본 `summaries`)를 바꿀 수 있다. 다른 저장소가 자기 규약대로 받아 갈 때 쓴다.
+- 요약을 다시 만들면(`summarize.py`) JSON 을 새로 쓰므로 `frames[]` 가 사라진다. `frames.py ... --attach` 로 다시 뽑아야 하고, 이때 영상에서 새로 잘라 기존 번호 다음으로 저장한다. 예전 이미지 파일은 지우지 않으므로 필요 없으면 직접 지운다. `--frames` 로 다시 돌릴 때도 같다.
 
 요약 JSON 에는 이렇게 남고,
 
@@ -243,6 +280,8 @@ python3 render.py "summaries/<채널>/<제목>.json" --to md -o "summaries/<채�
 ```bash
 python3 discover.py channels.txt --days 7 --known done.txt --exclude '모음\.zip'
 ```
+
+`channels.txt` 는 한 줄에 채널 URL 하나다. `#` 뒤는 주석이고 빈 줄은 무시한다. URL 뒤에 공백을 두고 적은 글자는 이름표로 보고 무시한다. 채널 URL 을 인자로 바로 넘겨도 된다. `--scan N` 으로 채널마다 최신 몇 개까지 훑을지 정한다(기본 30).
 
 채널 목록에서 최근 N일 안에 올라온 영상을 찾아 JSON 한 줄씩 내보낸다(`id`·`url`·`title`·`channel`·`upload_date`·`duration`). 자막·요약은 하지 않는다 — 결과를 `yt-transcript.py` 에 넘기는 것은 부르는 쪽의 몫이다.
 
@@ -270,6 +309,7 @@ done
 | `sections[].points[]` | 주제별 상세 | 슬랙 스레드 · `.md` |
 | `entities.keywords` / `figures` | 키워드, 언급된 수치 | 라우팅 · 필터링용 |
 | `disclaimer` | 주의 문구 (해당될 때만) | 전 채널 |
+| `scenes[]` | (선택) 장면 후보 `{t, caption}` — `--scenes` 일 때만 | 렌더되지 않음 |
 | `frames[]` | (선택) 붙인 장면 `{t, file, caption}` — `frames.py --attach` 가 기록 | `.md` 만 |
 
 모든 항목에 `t`(초)가 붙는다. 점프 링크 생성과 원문 대조에 함께 쓰인다.
@@ -299,30 +339,31 @@ template.json
    ├─ rules, schema  → summarize.py 가 프롬프트를 만든다
    ├─ limits         → summarize.py 가 결과를 검사·보정한다
    ├─ presets        → 고른 프리셋이 limits 를 덮어쓰고 rules 를 덧붙인다
+   ├─ scenes         → --scenes 일 때만 schema·rules·limits 에 더한다
    └─ channels       → render.py 가 카카오톡·슬랙 한도로 쓴다
 ```
 
-강제되는 값: `key_points` 3~5개 · `sections` 3~6개 · 섹션당 `points` 2~7개 · `headline` 100자 · 핵심 항목 90자 · 카카오톡 1000자 · 슬랙 블록 3000자.
+강제되는 값(상한): `key_points` 5개 · `sections` 6개 · 섹션당 `points` 7개 · 카카오톡 1000자 · 슬랙 블록 3000자. 하한(3개·3개·2개)에 못 미치면 경고만 한다. `headline` 100자는 넘으면 경고만 하고, 핵심 항목 90자는 프롬프트로 부탁만 하고 검사하지 않는다.
 
-`--template my.json` 으로 갈아끼우면 프롬프트·검증·렌더가 함께 따라온다.
-
-### 프리셋 — 짧게 · 기본 · 길게 · 쉽게
-
-`--preset` 으로 분량·난이도를 고른다. 프리셋은 `template.json` 의 `presets` 에 있고, 고른 프리셋의 `limits` 가 기본 한도를 덮어쓰고 `rules` 가 규칙 끝에 붙는다. 프롬프트와 검사·보정이 같은 한도를 보므로 "짧게" 를 골랐는데 핵심이 5개 오면 3개로 잘린다.
-
-| 프리셋 | `key_points` | `sections` | 섹션당 `points` | 덧붙는 규칙 |
-| --- | --- | --- | --- | --- |
-| `default` | 3~5 | 3~6 | 2~7 | — |
-| `short` | 2~3 | 2~3 | 2~4 | 핵심 주장과 결론만, 곁가지 예시는 뺀다 |
-| `long` | 4~7 | 5~10 | 2~7 | 흐름을 빠짐없이, 예시·근거·수치까지 (자막을 옮겨 적지는 않음) |
-| `easy` | 3~5 | 3~6 | 2~7 | 짧고 평이한 문장. 용어 풀이는 영상 안의 설명만 쓴다 |
-
-어떤 프리셋으로 만든 요약인지는 `source.preset` 에 남는다. 프롬프트는 `python3 template.py short` 로 미리 볼 수 있다. `presets` 가 없는 옛 템플릿을 `--template` 으로 넘기면 `default` 만 쓸 수 있다.
+`--template my.json` 으로 갈아끼우면 프롬프트·검증·렌더가 함께 따라온다. 아래는 한도를 줄인 템플릿(핵심 2~3개 · 섹션 1~2개 · 카카오톡 400자)을 넘겼을 때 기본 템플릿과 결과를 견준 것이다. 줄인 한도대로 잘렸다.
 
 | 템플릿 | `key_points` | `sections` | 카카오톡 |
 | --- | --- | --- | --- |
 | 기본 | 5개 | 6개 | 595자 (한도 1000) |
 | 변형 (2~3 / 1~2 / 400자) | 3개 | 2개 | 386자 (한도 400) |
+
+### 프리셋 — 짧게 · 기본 · 길게 · 쉽게
+
+`--preset` 으로 분량·난이도를 고른다. 프리셋은 `template.json` 의 `presets` 에 있고, 고른 프리셋의 `limits` 가 기본 한도를 덮어쓰고 `rules` 가 규칙 끝에 붙는다. 프롬프트와 검사·보정이 같은 한도를 보므로 "짧게" 를 골랐는데 핵심이 5개 오면 3개로 잘린다. `long` 의 섹션 상한이 14개인 것은 40분 강연에서 모델이 스스로 12~14개를 쓰기 때문이다 — 10개로 묶으면 세 번 다시 요청해도 넘쳤다.
+
+| 프리셋 | `key_points` | `sections` | 섹션당 `points` | 덧붙는 규칙 |
+| --- | --- | --- | --- | --- |
+| `default` | 3~5 | 3~6 | 2~7 | — |
+| `short` | 2~3 | 2~3 | 2~4 | 핵심 주장과 결론만, 곁가지 예시는 뺀다 |
+| `long` | 4~7 | 5~14 | 2~7 | 흐름을 빠짐없이, 예시·근거·수치까지 (자막을 옮겨 적지는 않음) |
+| `easy` | 3~5 | 3~6 | 2~7 | 짧고 평이한 문장. 용어 풀이는 영상 안의 설명만 쓴다 |
+
+어떤 프리셋으로 만든 요약인지는 `source.preset` 에 남는다. 프롬프트는 `python3 template.py short` 로 미리 볼 수 있다. `presets` 가 없는 옛 템플릿을 `--template` 으로 넘기면 `default` 만 쓸 수 있다.
 
 ### 위반 처리
 
@@ -332,6 +373,7 @@ template.json
 | --- | --- | --- |
 | **구조 깨짐** | 무엇이 틀렸는지 되먹여 **재생성**(최대 3회) | `key_points` 가 배열 아님, `text`/`points` 누락, `t` 해석 불가 |
 | **개수·범위 초과** | 맞춰 자르고 **무엇을 손댔는지 출력** | 8개 → 5개, `t=999999` → 영상 길이로 클램프 |
+| **섹션 초과** | 이웃 섹션을 합쳐 **다시 요청**(처음 포함 최대 3번), 그래도 넘치면 항목이 적은 이웃끼리 **합친다** — 뒤에서 자르면 영상 후반부(대개 결론)가 통째로 빠지기 때문. 합친 섹션의 항목이 상한을 넘으면 뒤를 자르고 알린다 | `long` 에서 17개 → 다시 요청 → 16개 → 다시 요청 → 15개 → 합쳐서 14개 |
 
 `python3 tests/verify_template.py` 로 위반 10종을 주입해 확인한다.
 
@@ -376,23 +418,23 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 | `yt-transcript.py` | 전체 진행 지휘 · 자막 받기 · 문단화 |
 | `template.json` | 요약 양식과 규칙 — **형식의 단일 출처** |
 | `template.py` | 양식 파일을 읽어 프롬프트·한도로 나눠줌 |
-| `summarize.py` | Claude 호출 · 양식 검사 · 보정 |
-| `grounding.py` | 숫자를 원문과 대조 (LLM 없음) |
+| `summarize.py` | LLM 호출(claude CLI 또는 OpenAI 호환) · 양식 검사 · 보정 |
+| `grounding.py` | (따로 실행) 숫자를 원문과 대조 (LLM 없음) |
 | `render.py` | 카카오톡 / 슬랙 / 마크다운 변환 |
 | `extract.py` | (선택) TextRank 로 중요 문단 선별 |
 | `discover.py` | 채널 목록에서 최근 N일의 새 영상 찾기 |
-| `frames.py` | 지정 시각의 영상 장면을 이미지로 잘라 요약에 붙이기 |
+| `frames.py` | 지정 시각이나 장면 후보의 영상 장면을 이미지로 잘라 요약에 붙이기 (`--review` 면 모델이 판별) |
 | `tests/verify_template.py` | 양식 강제 동작 검증 |
 | `tests/verify_discover.py` | 새 영상 판정 규칙 검증 (네트워크 없음) |
-| `tests/verify_frames.py` | 장면 시각 해석·번호·배치 검증 (네트워크 없음) |
+| `tests/verify_frames.py` | 장면 시각 해석·번호·배치와 판별 응답 해석 검증 (네트워크·모델 호출 없음) |
 | `tests/verify_presets.py` | 프리셋이 프롬프트·검사·보정에 함께 적용되는지 검증 (모델 호출 없음) |
 | `setup.sh` | 실행 환경 점검 · 부족한 도구 설치 |
 
 ---
 
-## `--extract` 는 기본이 꺼져 있다
+## `--extract` 를 언제 쓰나
 
-20분 영상으로 잰 결과다.
+기본은 꺼져 있다. 아래는 20분짜리 영어 영상 한 편으로 잰 결과다.
 
 | | 전체 자막 | TextRank 12문단 |
 | --- | --- | --- |
@@ -416,7 +458,7 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 
 - **자막 트랙이 없는 영상**은 처리할 수 없다. 음성을 받아 Whisper 등으로 STT 를 돌려야 한다.
 - **호출마다 결과가 달라진다.** 양식으로 모양은 고정되지만 문장은 매번 다르다. `temperature=0` 은 답이 아니다 — 완전 재현성을 보장한 적이 없고 Opus 5 에서는 파라미터 자체가 제거돼 보내면 400 이다. 같은 입력에 같은 출력이 필요하면 자막 해시로 캐싱해 호출을 건너뛰어야 한다.
-- **자동 발송은 사람이 중간에 보지 않는다.** 숫자 대조와 타임스탬프가 사실상 유일한 안전장치다.
+- **발송 기능은 없다.** 만든 글을 자동으로 보내도록 붙이면 사람이 중간에 보지 않게 되고, 그때 남는 안전장치는 따로 실행해야 하는 숫자 대조(`grounding.py`)와 타임스탬프뿐이다.
 
 ---
 

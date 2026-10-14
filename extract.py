@@ -115,8 +115,8 @@ def select(path, top):
 
 def main():
     ap = argparse.ArgumentParser(description="자막에서 중요 문단만 TextRank 로 선별")
-    ap.add_argument("transcript")
-    ap.add_argument("--top", type=int, default=12)
+    ap.add_argument("transcript", help="yt-transcript.py 가 만든 자막 .md")
+    ap.add_argument("--top", type=int, default=12, help="남길 문단 수 (기본: 12)")
     args = ap.parse_args()
 
     lines, kept, total = select(args.transcript, args.top)
