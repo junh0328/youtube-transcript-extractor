@@ -351,10 +351,17 @@ def repair(data, duration, soft, tpl):
         data["key_points"] = data["key_points"][:hi]
     data["key_points"] = [fix_entry(e) for e in data["key_points"]]
 
+    # 항목 상한은 모델이 쓴 섹션 하나하나에만 적용한다. 아래에서 이웃 섹션을 합친 뒤에
+    # 다시 자르면, 합쳐서 지키려던 내용(뒤 섹션의 항목)이 도로 빠지기 때문이다
+    max_points = tmpl.span(tpl, "section_points")[1]
+    for sec in data["sections"]:
+        sec["t"] = min(max(_as_seconds(sec.get("t")) or 0, 0), duration)
+        sec["points"] = [fix_entry(e) for e in sec["points"][:max_points]]
+
     hi = tmpl.span(tpl, "sections")[1]
     if len(data["sections"]) > hi:
         # 섹션은 영상 순서다. 뒤에서 자르면 후반부(대개 결론)가 통째로 빠지므로
-        # 항목이 가장 적은 이웃 두 섹션을 하나로 합쳐 가며 줄인다
+        # 항목이 가장 적은 이웃 두 섹션을 하나로 합쳐 가며 줄인다. 합친 섹션은 항목 상한을 넘을 수 있다
         print("[보정] 섹션(sections) {}개를 이웃끼리 합쳐 {}개로 줄입니다".format(
             len(data["sections"]), hi), file=sys.stderr)
         secs = data["sections"]
@@ -363,14 +370,6 @@ def repair(data, duration, soft, tpl):
             a, b = secs[i], secs.pop(i + 1)
             a["title"] = "{} · {}".format(a["title"], b["title"])
             a["points"] = a["points"] + b["points"]
-    max_points = tmpl.span(tpl, "section_points")[1]
-    for sec in data["sections"]:
-        sec["t"] = min(max(_as_seconds(sec.get("t")) or 0, 0), duration)
-        if len(sec["points"]) > max_points:
-            # 이웃 섹션을 합친 뒤 넘친 항목도 여기서 잘린다. 조용히 버리지 않고 알린다
-            print("[보정] 섹션 '{}' 의 항목 {}개 중 뒤의 {}개를 버립니다".format(
-                sec["title"], len(sec["points"]), len(sec["points"]) - max_points), file=sys.stderr)
-        sec["points"] = [fix_entry(e) for e in sec["points"][:max_points]]
 
     # entities 는 없어도 되는 필드다. 모양이 깨진 항목만 조용히 버리지 말고 알린다
     entities = data.get("entities")

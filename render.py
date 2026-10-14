@@ -9,7 +9,7 @@
 채널마다 문법이 다르기 때문에(슬랙 mrkdwn / 카카오톡 순수 텍스트 / 마크다운)
 요약을 '완성된 텍스트'가 아니라 구조로 저장하고, 출력 직전에만 형식을 입힌다.
 
-frames[](frames.py --attach 가 기록한 장면)는 md 에만 넣는다 — 각 장면을 그 시각이 속한 섹션 아래에.
+frames[](frames.py --attach 가 기록한 장면)는 md 에만 넣는다 — 캡션과 닮은 근처 항목, 없으면 장면 직전에 나온 항목 바로 아래에.
 """
 
 import argparse
@@ -18,6 +18,7 @@ import os
 import sys
 from urllib.parse import quote
 
+import extract
 import template as tmpl
 
 # template.json 의 channels 에서 읽어 온다. main() 에서 실제 값으로 채운다
@@ -122,6 +123,56 @@ def place_frames(sections, frames):
     return placed
 
 
+CAPTION_MATCH = 0.06         # 캡션과 항목 문장의 문자 3-gram 코사인 유사도. 최고 점수가 이보다 낮으면 시각 기준
+CAPTION_NEAR_BEST = 0.8      # 최고 점수의 이 비율 이상인 항목은 같은 내용으로 본다
+CAPTION_WINDOW = (120, 30)   # 장면 시각 앞뒤로 항목을 찾을 범위(초)
+
+
+def anchor_frame(sections, f):
+    """장면을 붙일 (섹션 번호, 항목 번호). 항목 번호 -1 은 그 섹션의 항목 목록 앞.
+
+    화자는 슬라이드를 띄운 채 앞 내용을 이어 말하곤 해서, 장면 시각만으로 고르면 엉뚱한
+    항목 아래에 붙는다. 그래서 캡션과 닮은 항목이 근처에 있으면 그중 가장 늦게 나온 항목
+    (슬라이드 내용이 다 나온 뒤)에 붙이고, 없으면 시각 기준으로 정한다.
+    유사도의 절댓값은 요약 문장 표현에 따라 크게 흔들려서, 하한은 낮게 두고 최고 점수와 견준다.
+    """
+    caption = f.get("caption") or ""
+    if caption:
+        grams = extract.ngrams(caption)
+        before, after = CAPTION_WINDOW
+        scored = [(extract.cosine(grams, extract.ngrams(p["text"])), p["t"], si, pi)
+                  for si, sec in enumerate(sections) for pi, p in enumerate(sec["points"])
+                  if f["t"] - before <= p["t"] <= f["t"] + after]
+        best = max((s[0] for s in scored), default=0)
+        if best >= CAPTION_MATCH:
+            near = [(t, si, pi) for score, t, si, pi in scored if score >= best * CAPTION_NEAR_BEST]
+            _, si, pi = max(near)  # 같은 내용이면 가장 늦게 나온 항목
+            return si, pi
+    si = next(i for i, g in enumerate(place_frames(sections, [f])) if g)
+    pi = -1
+    for i, p in enumerate(sections[si]["points"]):
+        if p["t"] <= f["t"] and (pi < 0 or p["t"] >= sections[si]["points"][pi]["t"]):
+            pi = i
+    return si, pi
+
+
+def place_in_points(sections, frames):
+    """{(섹션 번호, 항목 번호): [장면, ...]}. 장면 시각순."""
+    out = {}
+    if sections:
+        for f in sorted(frames, key=lambda f: f["t"]):
+            out.setdefault(anchor_frame(sections, f), []).append(f)
+    return out
+
+
+def frame_lines(video, f, indent=""):
+    caption = f.get("caption") or ""
+    return [indent + "![{}]({})".format(caption or "{} 장면".format(hhmmss(f["t"])),
+                                        quote(f["file"].replace(os.sep, "/"))), "",
+            indent + "*[`{}`]({}){}*".format(hhmmss(f["t"]), jump(video, f["t"]),
+                                             " " + caption if caption else ""), ""]
+
+
 def render_md(d):
     video = d["video"]
     out = ["# {}".format(video["title"]), "",
@@ -133,18 +184,19 @@ def render_md(d):
         out.append("- {} [`{}`]({})".format(p["text"], hhmmss(p["t"]), jump(video, p["t"])))
 
     out += ["", "## 상세", ""]
-    placed = place_frames(d["sections"], d.get("frames") or [])
-    for sec, frames in zip(d["sections"], placed):
+    placed = place_in_points(d["sections"], d.get("frames") or [])
+    for si, sec in enumerate(d["sections"]):
         out += ["### {} [`{}`]({})".format(sec["title"], hhmmss(sec["t"]), jump(video, sec["t"])), ""]
-        for p in sec["points"]:
+        for f in placed.get((si, -1), []):
+            out += frame_lines(video, f)
+        for i, p in enumerate(sec["points"]):
             out.append("- {} [`{}`]({})".format(p["text"], hhmmss(p["t"]), jump(video, p["t"])))
+            if (si, i) in placed:
+                # 항목 아래에 들여 써서 그 항목에 딸린 이미지로 보이게 한다
+                out.append("")
+                for f in placed[(si, i)]:
+                    out += frame_lines(video, f, indent="  ")
         out.append("")
-        for f in frames:
-            caption = f.get("caption") or ""
-            out += ["![{}]({})".format(caption or "{} 장면".format(hhmmss(f["t"])),
-                                       quote(f["file"].replace(os.sep, "/"))), "",
-                    "*[`{}`]({}){}*".format(hhmmss(f["t"]), jump(video, f["t"]),
-                                            " " + caption if caption else ""), ""]
 
     figures = d.get("entities", {}).get("figures") or []
     if figures:

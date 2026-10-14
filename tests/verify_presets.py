@@ -104,6 +104,21 @@ check("끝까지 넘치면 그때 이웃끼리 합쳐 맞추고 경고 · 마지
       (3, 14, True, True))
 sm.send = orig_send
 
+# 합친 섹션은 항목 상한(7)으로 다시 자르지 않는다 — 합쳐서 지키려던 뒤 섹션 내용이 빠지므로
+d = copy.deepcopy(BASE)
+d["sections"] = numbered(d["sections"], 7)
+for i, sec in enumerate(d["sections"]):
+    sec["points"] = [{"text": "s{}p{}".format(i, j), "t": i * 60 + j} for j in range(5)]
+with contextlib.redirect_stderr(io.StringIO()):
+    sm.repair(d, dur, [], tmpl.apply_preset(TPL, "default"))
+check("병합 뒤에도 모든 항목이 남음 (7섹션×5항목 → 6섹션, 35항목)",
+      (len(d["sections"]), sum(len(s["points"]) for s in d["sections"])), (6, 35))
+d = copy.deepcopy(BASE)
+d["sections"][0]["points"] = [{"text": "p{}".format(j), "t": j} for j in range(9)]
+with contextlib.redirect_stderr(io.StringIO()):
+    sm.repair(d, dur, [], tmpl.apply_preset(TPL, "default"))
+check("모델이 쓴 섹션 하나가 넘치면 상한으로 자름", len(d["sections"][0]["points"]), 7)
+
 # 장면 후보(scenes[])는 켰을 때만 프롬프트에 들어가고, 프리셋 한도는 그대로 둔다
 scn = tmpl.with_scenes(tmpl.apply_preset(TPL, "long"))
 check("scenes 는 기본 프롬프트에 없음", "`scenes`" in prompt("default"), False)

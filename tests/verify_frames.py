@@ -84,6 +84,28 @@ md = render.render_md(doc)
 check("이미지 링크 인코딩", "![개념도](assets/%EC%A0%9C%EB%AA%A9%2001.jpg)" in md, True)
 check("캡션 줄에 점프 링크", "*[`02:40`](https://www.youtube.com/watch?v=X&t=160s) 개념도*" in md, True)
 check("캡션 없는 장면", "![02:50 장면](" in md and "*[`02:50`](https://www.youtube.com/watch?v=X&t=170s)*" in md, True)
+# --- 항목 배치: 캡션과 닮은 근처 항목 중 가장 늦은 것, 없으면 장면 직전에 나온 항목
+secs = [{"t": 0, "points": [{"text": "앞 이야기", "t": 100}, {"text": "모든 맥락을 다 넣으면 환각이 늘고 관련 맥락만 주면 정확하다", "t": 200}]},
+        {"t": 300, "points": [{"text": "미닝은 나는 누구인가를 담는다", "t": 300}, {"text": "다음 이야기", "t": 400}]}]
+check("캡션이 닮은 항목이 근처에 있으면 섹션을 넘어서도 그 항목",
+      render.anchor_frame(secs, {"t": 310, "caption": "다 때려넣기(환각) vs 관련 맥락만(정확)"}), (0, 1))
+check("유사도 절댓값이 낮아도 근처에서 가장 닮은 항목 (실제 예시: 0.073)",
+      render.anchor_frame([{"t": 0, "points": [
+          {"text": "맥락을 전부 넣으면 환각과 비용이 늘고 생산성이 떨어지므로, 지금 관련된 맥락만 줘야 정확하다고 본다.", "t": 2145}]},
+          {"t": 2190, "points": [{"text": "AI에 줄 지도를 MAP으로 정리한다 — 내가 누구인지(Meaning)", "t": 2190}]}],
+          {"t": 2190, "caption": "다 때려넣기(혼란·환각) vs 관련 맥락만(정확·생산적)"}), (0, 0))
+check("닮은 항목이 없으면 시각 기준 (직전 항목)",
+      render.anchor_frame(secs, {"t": 350, "caption": "전혀 다른 그림"}), (1, 0))
+check("캡션이 없어도 시각 기준", render.anchor_frame(secs, {"t": 450, "caption": ""}), (1, 1))
+check("섹션의 모든 항목보다 앞이면 -1", render.anchor_frame([{"t": 0, "points": [{"text": "x", "t": 100}]}],
+                                                       {"t": 50, "caption": ""}), (0, -1))
+doc2 = dict(doc, sections=[{"title": "s", "t": 0, "points": [
+    {"text": "앞 항목", "t": 100}, {"text": "뒤 항목", "t": 500}]}],
+            frames=[{"t": 160, "file": "a 01.jpg", "caption": "도식"}])
+lines = render.render_md(doc2).splitlines()
+i_img = next(i for i, l in enumerate(lines) if l.startswith("  ![도식]"))
+check("이미지가 앞 항목과 뒤 항목 사이에 들여 써서 들어감",
+      lines[i_img - 2].startswith("- 앞 항목") and lines[i_img + 4].startswith("- 뒤 항목"), True)
 del doc["frames"]
 check("frames 가 없으면 이미지 없음", "![" in render.render_md(doc), False)
 
