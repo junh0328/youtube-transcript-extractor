@@ -25,12 +25,20 @@
 - 오픈클로·헤르메스는 게이트웨이를 통해 디스코드·텔레그램 등과 연동돼 핸드폰에서도 쓰는 개인 비서가 됐다고 설명한다. [`05:51`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=351s)
 - 이 흐름으로 맥미니 품절·가격 급등, 중국의 '1인 1 가재' 오프라인 설치 모임 같은 현상이 벌어졌다고 전한다. [`06:34`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=394s)
 
+![최근 AI 활용의 두 갈래 — ① 만들기 ② 개인 비서](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2001.jpg)
+
+*[`03:40`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=220s) 최근 AI 활용의 두 갈래 — ① 만들기 ② 개인 비서*
+
 ### LLM 위키와 AIOS의 등장 [`07:18`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=438s)
 
 - 안드레 카파시가 4월 초 X에 올린 LLM 위키 개념이 큰 반향을 일으켰다고 말한다. [`07:18`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=438s)
 - LLM 위키는 PPT·PDF·웹 문서를 AI가 소화해 활용하기 좋은 형태로 정리·연결해 두는 지식 베이스 아이디어라고 설명한다. [`08:01`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=481s)
 - AI 모델이 똑똑해지고 자가 발전 수준에 이르렀다는 앤트로픽 발표까지 겹치며 AI와 지식 베이스가 합쳐진 AIOS 시대가 됐다고 본다. [`08:45`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=525s)
 - 이 흐름은 새로운 게 아니라 1945년 부시의 메멕스, 티아고 포르테의 세컨드 브레인으로 이어진 지식 관리의 연장선이라고 설명한다. [`10:13`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=613s)
+
+![LLM Wiki 개념 — 원본(raw)을 ingest 해 분해·연결·축적되는 위키 지식그래프로](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2002.jpg)
+
+*[`08:01`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=481s) LLM Wiki 개념 — 원본(raw)을 ingest 해 분해·연결·축적되는 위키 지식그래프로*
 
 ### 세 개의 두뇌(브레인 트리니티) 프레임 [`12:26`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=746s)
 
@@ -40,12 +48,20 @@
 - 저장해 둔 맛집을 AI가 꺼내 추천하고 계획 문서를 다시 옵시디언에 저장하는 식으로 세 두뇌가 순환한다고 예시를 든다. [`15:19`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=919s)
 - 대중은 AI 툴에만 관심이 많지만 실은 어떤 데이터를 저장하고 어떻게 활용하는지가 더 중요하다고 강조한다. [`16:02`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=962s)
 
+![세 두뇌의 역할 — 1st 나(관찰·판단·영감·결정) · 2nd 지식(저장·검색·분류) · 3rd AI(확장·응용·적용)](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2003.jpg)
+
+*[`14:37`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=877s) 세 두뇌의 역할 — 1st 나(관찰·판단·영감·결정) · 2nd 지식(저장·검색·분류) · 3rd AI(확장·응용·적용)*
+
 ### 옵시디언이 선택되는 이유 [`16:46`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1006s)
 
 - 모든 노트가 클라우드가 아닌 내 컴퓨터에 저장되는 로컬 기반이라 안전하다고 설명한다. [`17:30`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1050s)
 - 마크다운 기반이라 클로드 코드·코덱스가 내 파일을 그대로 읽고 이해할 수 있어 AI에 최적화된 앱이라고 본다. [`18:14`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1094s)
 - 비즈니스 용도도 무료이며 노트끼리 연결되어 사람의 연상 방식대로 기록하고 AI가 그 연결을 따라 읽을 수 있다고 말한다. [`18:14`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1094s)
 - 2021년부터 사용해 인생 전체를 기록했고 컴퓨터보다 그 데이터가 더 가치 있다고 말한다. [`18:58`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1138s)
+
+![왜 옵시디언인가 — 로컬 · 마크다운 · 무료와 플러그인 생태계, 노트끼리 이어지는 연결](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2004.jpg)
+
+*[`18:14`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1094s) 왜 옵시디언인가 — 로컬 · 마크다운 · 무료와 플러그인 생태계, 노트끼리 이어지는 연결*
 
 ### 브라이언의 4가지 활용 사례 [`20:26`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=1226s)
 
@@ -65,6 +81,18 @@
 - MAP은 Meaning(나는 누구인가), Asset(나의 지식·산출물), Action(스킬·MCP·워크플로우), Persona(AI의 역할)로 구성된다고 제시한다. [`36:30`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=2190s)
 - 개인은 쉽지만 조직은 데이터·워크플로우·보안 문제로 변화 관리가 훨씬 어렵다고 본다. [`37:56`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=2276s)
 - AIOS는 모델과 에이전트를 갈아끼워도 나의 맥락으로 평생 성장하는 시스템이라고 마무리한다. [`39:24`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=2364s)
+
+![다 때려넣기(혼란·환각) vs 관련 맥락만(정확·생산적)](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2005.jpg)
+
+*[`36:30`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=2190s) 다 때려넣기(혼란·환각) vs 관련 맥락만(정확·생산적)*
+
+![개인 맥락의 4가지 요소 MAP — 사람의 영역(Meaning·Asset)과 AI의 영역(Action·Persona)](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2006.jpg)
+
+*[`37:15`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=2235s) 개인 맥락의 4가지 요소 MAP — 사람의 영역(Meaning·Asset)과 AI의 영역(Action·Persona)*
+
+![개인은 쉽다(단순), 조직은 어렵다(보안·표준·교육·변화관리)](assets/%EB%AA%A8%EB%91%90%EA%B0%80%20%27%EB%82%98%EB%A5%BC%20%EC%95%84%EB%8A%94%20AI%20OS%27%EB%A5%BC%20%EC%84%A4%EA%B3%84%ED%95%98%EB%8A%94%20%EC%8B%9C%EB%8C%80%2C%20%EA%B2%A9%EC%B0%A8%EB%8A%94%20%EC%96%B4%EB%94%94%EC%84%9C%20%EC%98%A4%EB%8A%94%EA%B0%80_%20_%20Obsidian%20%C3%97%20Claude%20Code%20_%20Seoul%20Metaweek%202026%282026.07.04.%29%2007.jpg)
+
+*[`38:05`](https://www.youtube.com/watch?v=LWd5J-srk9w&t=2285s) 개인은 쉽다(단순), 조직은 어렵다(보안·표준·교육·변화관리)*
 
 ## 언급된 수치
 

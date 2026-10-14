@@ -265,5 +265,42 @@
       }
     ]
   },
-  "disclaimer": ""
+  "disclaimer": "",
+  "frames": [
+    {
+      "t": 220,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 01.jpg",
+      "caption": "최근 AI 활용의 두 갈래 — ① 만들기 ② 개인 비서"
+    },
+    {
+      "t": 481,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 02.jpg",
+      "caption": "LLM Wiki 개념 — 원본(raw)을 ingest 해 분해·연결·축적되는 위키 지식그래프로"
+    },
+    {
+      "t": 877,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 03.jpg",
+      "caption": "세 두뇌의 역할 — 1st 나(관찰·판단·영감·결정) · 2nd 지식(저장·검색·분류) · 3rd AI(확장·응용·적용)"
+    },
+    {
+      "t": 1094,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 04.jpg",
+      "caption": "왜 옵시디언인가 — 로컬 · 마크다운 · 무료와 플러그인 생태계, 노트끼리 이어지는 연결"
+    },
+    {
+      "t": 2190,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 05.jpg",
+      "caption": "다 때려넣기(혼란·환각) vs 관련 맥락만(정확·생산적)"
+    },
+    {
+      "t": 2235,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 06.jpg",
+      "caption": "개인 맥락의 4가지 요소 MAP — 사람의 영역(Meaning·Asset)과 AI의 영역(Action·Persona)"
+    },
+    {
+      "t": 2285,
+      "file": "assets/모두가 '나를 아는 AI OS'를 설계하는 시대, 격차는 어디서 오는가_ _ Obsidian × Claude Code _ Seoul Metaweek 2026(2026.07.04.) 07.jpg",
+      "caption": "개인은 쉽다(단순), 조직은 어렵다(보안·표준·교육·변화관리)"
+    }
+  ]
 }
