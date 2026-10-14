@@ -41,6 +41,7 @@ flowchart TD
 | `transcripts/<채널>/<제목>.md` | 영상 **원본 언어** 자막. 45초 문단, 타임스탬프 점프 링크 |
 | `summaries/<채널>/<제목>.json` | **한국어** 요약 정본 (항목별 구조) |
 | `summaries/<채널>/<제목>.md` | 한국어 요약 읽기용 문서 |
+| `summaries/<채널>/assets/<제목> NN.jpg` | (선택) `frames.py` 로 뽑은 영상 장면 |
 
 채널(업로더)별로 폴더가 자동으로 나뉜다. 같은 URL 을 다시 돌리면 세 파일 모두 덮어쓴다. 덮어쓴 경우 `[완료]` 대신 `[덮어씀]` 으로 표시된다.
 
@@ -81,6 +82,7 @@ https://www.youtube.com/watch?v=VIDEO_ID
 | Python 3.9+ | 전체 |
 | [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) | 자막 받기 |
 | [`claude` CLI](https://claude.com/claude-code) — **로그인된 상태** | 요약 생성 |
+| [`ffmpeg`](https://ffmpeg.org) | (선택) `frames.py` 장면 캡처에만. 없어도 나머지는 동작 |
 | `brew` | (선택) 위 설치를 자동화할 때만 |
 
 `setup.sh` 는 설치 여부뿐 아니라 **claude 로그인까지 실제 호출로 확인한다.** 설치돼 있어도 로그인이 안 돼 있으면 요약 단계에서야 실패하기 때문이다. 템플릿이 읽히는지, 스크립트 문법이 멀쩡한지도 함께 본다.
@@ -197,6 +199,21 @@ python3 extract.py "transcripts/<채널>/<제목>.md" --top 12
 python3 render.py "summaries/<채널>/<제목>.json" --to slack \
   | curl -sX POST -H 'Content-type: application/json' -d @- "$SLACK_WEBHOOK_URL"
 ```
+
+### 영상 장면 붙이기
+
+```bash
+python3 frames.py "summaries/<채널>/<제목>.json" "02:40=화자가 그린 개념도" 08:20 --attach
+python3 render.py "summaries/<채널>/<제목>.json" --to md -o "summaries/<채널>/<제목>.md"
+```
+
+요약을 읽다가 **화면이 이해를 돕는 시각**(화자가 띄운 도식·슬라이드, 시연 결과, 수치가 찍힌 화면)을 골라 그 장면만 이미지로 잘라 낸다. 영상 전체를 받지 않고 yt-dlp 가 알려 준 스트림 주소에서 ffmpeg 로 한 장면만 꺼내므로 장면당 3~4초, 720p 한 장이 100KB 안팎이다.
+
+- 시각은 `SS` · `MM:SS` · `HH:MM:SS`, `=` 뒤는 캡션이다.
+- `--attach` 는 요약 JSON 의 `frames[]` 에 `{t, file, caption}` 을 기록한다. `render.py --to md` 가 각 장면을 그 시각이 속한 섹션 아래에 이미지와 점프 링크 캡션으로 넣는다. 카카오톡·슬랙 렌더에는 들어가지 않는다.
+- 어느 시각을 뽑을지는 **사람이 고른다.** 같은 구간이라도 몇 초 차이로 도식이 덜 그려졌거나 빈 화면이 잡히므로, 뽑은 뒤 열어 보고 아니면 지우고 몇 초 옮겨 다시 뽑는다. 지운 이미지는 다음 `--attach` 때 `frames[]` 에서도 빠진다.
+- 첫 인자로 URL 이나 자막 `.md` 를 넘기면 `summaries/<채널>/assets/<제목> NN.jpg` 에 쓰기만 한다. `--outdir` · `--name` · `--start` 로 위치·이름·첫 번호를 바꿀 수 있다 — 다른 저장소가 자기 규약대로 받아 갈 때 쓴다.
+- 요약을 다시 만들면(`summarize.py`) JSON 을 새로 쓰므로 `frames[]` 가 사라진다. 이미지 파일은 남으니 `--attach` 만 다시 하면 된다.
 
 ### 채널의 새 영상 찾기
 
@@ -325,8 +342,10 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 | `render.py` | 카카오톡 / 슬랙 / 마크다운 변환 |
 | `extract.py` | (선택) TextRank 로 중요 문단 선별 |
 | `discover.py` | 채널 목록에서 최근 N일의 새 영상 찾기 |
+| `frames.py` | 지정 시각의 영상 장면을 이미지로 잘라 요약에 붙이기 |
 | `tests/verify_template.py` | 양식 강제 동작 검증 |
 | `tests/verify_discover.py` | 새 영상 판정 규칙 검증 (네트워크 없음) |
+| `tests/verify_frames.py` | 장면 시각 해석·번호·배치 검증 (네트워크 없음) |
 | `setup.sh` | 실행 환경 점검 · 부족한 도구 설치 |
 
 ---

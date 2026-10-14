@@ -113,6 +113,24 @@ else
   fi
 fi
 
+# --- ffmpeg (장면 캡처, 선택) ------------------------------------------------
+# frames.py 만 쓴다. 없어도 자막·요약은 되므로 "준비되지 않음" 으로 치지 않는다
+if command -v ffmpeg >/dev/null 2>&1; then
+  ok "ffmpeg" "$(ffmpeg -version 2>/dev/null | head -1 | awk '{print $3}')"
+else
+  warn "ffmpeg" "없음 (frames.py 장면 캡처에만 쓰임)"
+  if [ "$HAS_BREW" = "1" ] && may_install "지금 설치할까요?"; then
+    if brew install ffmpeg && command -v ffmpeg >/dev/null 2>&1; then
+      ok "ffmpeg" "$(ffmpeg -version 2>/dev/null | head -1 | awk '{print $3}') (방금 설치)"
+    else
+      warn "ffmpeg" "설치 실패"
+      note "brew install ffmpeg  또는  apt install ffmpeg"
+    fi
+  else
+    note "brew install ffmpeg  또는  apt install ffmpeg"
+  fi
+fi
+
 # --- 요약 백엔드 -------------------------------------------------------------
 # 기본은 claude CLI. YT_LLM_BASE_URL 이 있으면 OpenAI 호환 엔드포인트를 쓴다
 BACKEND_OK=1
@@ -165,7 +183,7 @@ echo
 echo "저장소 구성"
 echo "────────────────────────────────────────────────"
 
-for f in yt-transcript.py summarize.py render.py grounding.py extract.py template.py template.json; do
+for f in yt-transcript.py summarize.py render.py grounding.py extract.py frames.py template.py template.json; do
   if [ -f "$REPO/$f" ]; then
     ok "$f"
   else
@@ -185,10 +203,10 @@ if [ "$MISSING" = "0" ] && command -v python3 >/dev/null 2>&1; then
 
   if (cd "$REPO" && python3 -c '
 import ast, sys
-for f in ["yt-transcript.py","summarize.py","render.py","grounding.py","extract.py","template.py"]:
+for f in ["yt-transcript.py","summarize.py","render.py","grounding.py","extract.py","frames.py","template.py"]:
     ast.parse(open(f, encoding="utf-8").read())
 ' 2>/dev/null); then
-    ok "스크립트 문법" "6개 정상"
+    ok "스크립트 문법" "7개 정상"
   else
     bad "스크립트 문법" "오류"
     MISSING=1

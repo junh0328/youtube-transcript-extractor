@@ -12,7 +12,9 @@
 
 import argparse
 import json
+import os
 import sys
+from urllib.parse import quote
 
 import template as tmpl
 
@@ -103,6 +105,21 @@ def render_kakao(d):
 
 # --- 마크다운 ----------------------------------------------------------------
 
+def place_frames(sections, frames):
+    """장면마다 그 시각이 속한 섹션을 찾는다. 섹션 시작 시각 기준, 첫 섹션보다 앞이면 첫 섹션."""
+    placed = [[] for _ in sections]
+    if not sections:
+        return placed
+    starts = sorted(range(len(sections)), key=lambda i: sections[i]["t"])
+    for f in sorted(frames, key=lambda f: f["t"]):
+        owner = starts[0]
+        for i in starts:
+            if sections[i]["t"] <= f["t"]:
+                owner = i
+        placed[owner].append(f)
+    return placed
+
+
 def render_md(d):
     video = d["video"]
     out = ["# {}".format(video["title"]), "",
@@ -114,11 +131,18 @@ def render_md(d):
         out.append("- {} [`{}`]({})".format(p["text"], hhmmss(p["t"]), jump(video, p["t"])))
 
     out += ["", "## 상세", ""]
-    for sec in d["sections"]:
+    placed = place_frames(d["sections"], d.get("frames") or [])
+    for sec, frames in zip(d["sections"], placed):
         out += ["### {} [`{}`]({})".format(sec["title"], hhmmss(sec["t"]), jump(video, sec["t"])), ""]
         for p in sec["points"]:
             out.append("- {} [`{}`]({})".format(p["text"], hhmmss(p["t"]), jump(video, p["t"])))
         out.append("")
+        for f in frames:
+            caption = f.get("caption") or ""
+            out += ["![{}]({})".format(caption or "{} 장면".format(hhmmss(f["t"])),
+                                       quote(f["file"].replace(os.sep, "/"))), "",
+                    "*[`{}`]({}){}*".format(hhmmss(f["t"]), jump(video, f["t"]),
+                                            " " + caption if caption else ""), ""]
 
     figures = d.get("entities", {}).get("figures") or []
     if figures:
