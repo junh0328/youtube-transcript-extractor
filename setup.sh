@@ -226,7 +226,10 @@ fi
 printf '%s바로 사용할 수 있습니다.%s\n\n' "$G" "$N"
 echo "  python3 yt-transcript.py \"<유튜브 URL>\""
 echo
-echo "  → transcripts/<제목>.md   자막"
-echo "  → summaries/<제목>.json   요약 (정본)"
-echo "  → summaries/<제목>.md     요약 (읽기용)"
+echo "  → transcripts/<채널>/<제목>.md   자막"
+echo "  → summaries/<채널>/<제목>.json   요약 (정본)"
+echo "  → summaries/<채널>/<제목>.md     요약 (읽기용)"
+echo
+echo "  요약 분량: --preset short | default | long | easy"
+echo "  장면 붙이기: python3 frames.py \"summaries/<채널>/<제목>.json\" 02:40 --attach   (ffmpeg 필요)"
 echo

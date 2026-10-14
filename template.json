@@ -12,6 +12,32 @@
     "section_points": [2, 7]
   },
 
+  "presets": {
+    "default": {
+      "label": "기본"
+    },
+    "short": {
+      "label": "짧게",
+      "limits": { "key_points": [2, 3], "sections": [2, 3], "section_points": [2, 4] },
+      "rules": [
+        "**짧게 요약합니다.** 영상의 핵심 주장과 결론만 남기고 곁가지 예시는 뺍니다. 남긴 항목에는 모두 `t` 를 답니다."
+      ]
+    },
+    "long": {
+      "label": "길게",
+      "limits": { "key_points": [4, 7], "sections": [5, 10] },
+      "rules": [
+        "**길게 요약합니다.** 섹션마다 흐름을 빠짐없이 따라가고 예시·근거·수치까지 담습니다. 자막을 그대로 옮겨 적지는 않습니다."
+      ]
+    },
+    "easy": {
+      "label": "쉽게",
+      "rules": [
+        "**쉽게 씁니다.** 문장은 짧고 평이하게 씁니다. 전문용어는 영상 안에 설명이 있으면 그 설명으로 풀고, 영상에 없는 설명을 지어 붙이지 않습니다."
+      ]
+    }
+  },
+
   "channels": {
     "kakao_chars": 1000,
     "slack_section_chars": 3000

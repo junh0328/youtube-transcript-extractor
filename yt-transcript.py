@@ -6,7 +6,7 @@
 
 사용법:
     yt-transcript.py <URL> [--lang orig] [--format md|json|both] [--outdir .]
-                          [--chunk 45] [--no-auto] [--from-json PATH]
+                          [--chunk 45] [--no-auto] [--from-json PATH] [--preset short]
 
 옵션:
     --lang    'orig'(원본 언어 자동 탐지) 또는 언어 코드. 쉼표로 여러 개. 기본: orig
@@ -241,7 +241,7 @@ def write_json(path, meta, lang, is_auto, segments):
         json.dump(payload, fp, ensure_ascii=False, indent=2)
 
 
-def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None):
+def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None, preset=None):
     """자막 → 요약 JSON → 요약 md 까지 이어서 실행한다.
 
     요약과 렌더링이 같은 템플릿을 보도록 두 단계에 같은 값을 넘긴다.
@@ -260,6 +260,8 @@ def run_pipeline(md_path, summary_dir, model, template=None, extract_top=None):
         summarize += ["--model", model]
     if extract_top:
         summarize += ["--extract", str(extract_top)]
+    if preset:
+        summarize += ["--preset", preset]
     if subprocess.run(summarize).returncode != 0:
         print("[경고] 요약 생성에 실패했습니다. 자막은 정상 저장됐습니다.")
         return
@@ -286,6 +288,7 @@ def main():
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     ap.add_argument("--extract", type=int, metavar="N",
                     help="요약 전에 TextRank 로 상위 N개 문단만 고름(내용이 줄어드니 긴 영상에만)")
+    ap.add_argument("--preset", help="요약 분량·난이도: short · default · long · easy (template.json 의 presets)")
     ap.add_argument("--no-summary", action="store_true", help="자막만 추출하고 요약은 건너뜀")
     args = ap.parse_args()
 
@@ -338,7 +341,7 @@ def main():
     if args.format == "json":
         print("[정보] 요약은 .md 자막을 입력으로 씁니다. --format md 또는 both 로 실행하세요.")
         return
-    run_pipeline(stem + ".md", summary_dir, args.model, args.template, args.extract)
+    run_pipeline(stem + ".md", summary_dir, args.model, args.template, args.extract, args.preset)
 
 
 if __name__ == "__main__":

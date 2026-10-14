@@ -355,6 +355,8 @@ def main():
     ap.add_argument("--template", help="요약 템플릿 .json (기본: 레포의 template.json)")
     ap.add_argument("--extract", type=int, metavar="N",
                     help="TextRank 로 상위 N개 문단만 골라 모델에 넘김(할루시네이션·토큰 절감)")
+    ap.add_argument("--preset", default="default",
+                    help="요약 분량·난이도 (template.json 의 presets: short·default·long·easy)")
     args = ap.parse_args()
     backend = resolve_backend(args.model)
 
@@ -371,7 +373,10 @@ def main():
     if not args.transcript:
         ap.error("자막 .md 경로가 필요합니다 (--selftest 제외)")
 
-    tpl = tmpl.load(args.template)
+    try:
+        tpl = tmpl.apply_preset(tmpl.load(args.template), args.preset)
+    except ValueError as e:
+        sys.exit("[에러] {}".format(e))
     meta = parse_transcript(args.transcript)
     if not meta["body"]:
         sys.exit("[에러] 자막 본문이 비어 있습니다: " + args.transcript)
@@ -384,8 +389,8 @@ def main():
             total, kept, 100 * (1 - len(body) / len(meta["body"]))))
         meta["source"]["extract"] = {"kept": kept, "total": total}
 
-    print("[정보] 요약 생성 중... ({} · 템플릿 {} v{})".format(
-        describe_backend(backend), tpl.get("name", "?"), tpl.get("version", "?")))
+    print("[정보] 요약 생성 중... ({} · 템플릿 {} v{} · 프리셋 {})".format(
+        describe_backend(backend), tpl.get("name", "?"), tpl.get("version", "?"), args.preset))
     prompt = tmpl.build_prompt(tpl, body)
     summary = call_model(prompt, backend, meta["video"]["duration_sec"], tpl)
 
@@ -394,6 +399,7 @@ def main():
     meta["source"]["backend"] = backend["kind"]
     # 어떤 템플릿으로 만든 결과인지 남긴다. 템플릿이 바뀌면 산출물도 달라지기 때문
     meta["source"]["template"] = "{}@{}".format(tpl.get("name", "?"), tpl.get("version", "?"))
+    meta["source"]["preset"] = args.preset
     payload = {"video": meta["video"], "source": meta["source"]}
     payload.update(summary)
 

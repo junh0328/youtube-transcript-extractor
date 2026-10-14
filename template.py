@@ -5,6 +5,7 @@
 같은 template.json 을 본다. 규칙이 코드 여기저기 흩어져 조용히 어긋나는 걸 막기 위해서다.
 
     python3 template.py        # 현재 템플릿이 만들어내는 프롬프트를 확인
+    python3 template.py short  # 프리셋을 적용한 프롬프트를 확인
 """
 
 import json
@@ -22,6 +23,28 @@ def load(path=None):
         if key not in tpl:
             raise ValueError("템플릿에 '{}' 가 없습니다: {}".format(key, path))
     return tpl
+
+
+def preset_names(tpl):
+    """템플릿에 정의된 프리셋 이름. presets 가 없는 템플릿은 default 하나만 있는 것으로 본다."""
+    return list(tpl.get("presets") or {"default": {}})
+
+
+def apply_preset(tpl, name):
+    """프리셋의 limits 를 덮어쓰고 rules 를 덧붙인 새 템플릿을 돌려준다.
+
+    프롬프트(build_prompt)와 검증·보정(summarize.check·repair)이 모두 tpl["limits"] 를 보므로,
+    여기서 한 번 합치면 프리셋 한도가 세 곳에 함께 적용된다.
+    """
+    presets = tpl.get("presets") or {"default": {}}
+    if name not in presets:
+        raise ValueError("프리셋 '{}' 이 없습니다 (있는 것: {})".format(name, ", ".join(presets)))
+    preset = presets[name]
+    out = dict(tpl)
+    out["limits"] = dict(tpl["limits"], **preset.get("limits", {}))
+    out["rules"] = list(tpl["rules"]) + list(preset.get("rules", []))
+    out["preset"] = name
+    return out
 
 
 def placeholders(tpl):
@@ -70,5 +93,6 @@ def span(tpl, key):
 
 
 if __name__ == "__main__":
-    t = load()
+    import sys
+    t = apply_preset(load(), sys.argv[1] if len(sys.argv) > 1 else "default")
     print(build_prompt(t, "<여기에 자막 본문이 들어갑니다>"))

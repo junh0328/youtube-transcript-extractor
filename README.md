@@ -1,6 +1,6 @@
 # yt-transcript-extractor
 
-유튜브 URL 하나로 **자막 추출 → 한국어 요약 → 메신저용 렌더링**까지 한 번에.
+유튜브 URL 하나로 **자막 추출 → 한국어 요약 → 메신저용 렌더링**까지 한 번에. 요약 분량·난이도는 프리셋(짧게·기본·길게·쉽게)으로 고르고, 필요하면 영상 장면을 잘라 읽기용 문서에 붙인다.
 
 ```bash
 python3 yt-transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
@@ -25,12 +25,15 @@ flowchart TD
     H --> I1["카카오톡 텍스트"]
     H --> I2["슬랙 Block Kit"]
     H --> I3["summaries/&lt;채널&gt;/&lt;제목&gt;.md"]
+    F -.-> J["frames.py (선택)<br/>사람이 고른 시각의 장면"]
+    J --> K["summaries/&lt;채널&gt;/assets/"]
+    J -.->|"frames[] 기록"| F
 
     style E fill:#fef7e0,stroke:#f9ab00
     style G fill:#e6f4ea,stroke:#34a853
 ```
 
-`yt-transcript.py` 하나를 실행하면 **자막 → 요약 → 읽기용 md** 까지 자동으로 이어진다. `grounding.py` 와 슬랙·카카오톡 렌더링은 따로 부른다.
+`yt-transcript.py` 하나를 실행하면 **자막 → 요약 → 읽기용 md** 까지 자동으로 이어진다. `grounding.py`, 슬랙·카카오톡 렌더링, 장면 캡처(`frames.py`)는 따로 부른다.
 
 ---
 
@@ -154,6 +157,7 @@ python3 yt-transcript.py "<유튜브 URL>"
 | `--summary-dir` | 요약 출력 디렉터리 (그 안에 채널별 하위 폴더 생성) | `summaries` |
 | `--model` | 요약에 쓸 모델 | `claude-opus-5` |
 | `--template` | 요약 양식 파일 | `template.json` |
+| `--preset` | 요약 분량·난이도 — `short` · `default` · `long` · `easy` | `default` |
 | `--extract N` | 요약 전에 중요 문단 N개만 선별 | off |
 | `--no-summary` | 자막만 뽑고 멈춤 | off |
 | `--no-auto` | 자동 생성 자막 제외, 수동 자막만 | off |
@@ -166,6 +170,9 @@ python3 yt-transcript.py "$URL" --lang ko
 # 나중에 재가공할 수 있게 json 까지 저장
 python3 yt-transcript.py "$URL" --format both
 
+# 짧게 요약
+python3 yt-transcript.py "$URL" --preset short
+
 # 이미 뽑은 json 으로 문단 길이만 바꿔 재생성 (429 회피)
 python3 yt-transcript.py --from-json "transcripts/채널/제목.json" --chunk 90
 
@@ -177,8 +184,8 @@ python3 yt-transcript.py "$URL" --outdir ko --lang ko
 ### 단계별로 따로
 
 ```bash
-# 요약만 다시
-python3 summarize.py "transcripts/<채널>/<제목>.md" --outdir "summaries/<채널>"
+# 요약만 다시 (프리셋을 바꿔 다시 만들 때도)
+python3 summarize.py "transcripts/<채널>/<제목>.md" --outdir "summaries/<채널>" [--preset long]
 
 # 메신저용 렌더링
 python3 render.py "summaries/<채널>/<제목>.json" --to kakao          # 순수 텍스트
@@ -215,6 +222,22 @@ python3 render.py "summaries/<채널>/<제목>.json" --to md -o "summaries/<채�
 - 첫 인자로 URL 이나 자막 `.md` 를 넘기면 `summaries/<채널>/assets/<제목> NN.jpg` 에 쓰기만 한다. `--outdir` · `--name` · `--start` 로 위치·이름·첫 번호를 바꿀 수 있다 — 다른 저장소가 자기 규약대로 받아 갈 때 쓴다.
 - 요약을 다시 만들면(`summarize.py`) JSON 을 새로 쓰므로 `frames[]` 가 사라진다. 이미지 파일은 남으니 `--attach` 만 다시 하면 된다.
 
+요약 JSON 에는 이렇게 남고,
+
+```json
+"frames": [
+  { "t": 160, "file": "assets/<제목> 01.jpg", "caption": "화자가 그린 개념도" }
+]
+```
+
+읽기용 md 에서는 02:40 이 속한 섹션의 항목들 아래에 이렇게 들어간다.
+
+```markdown
+![화자가 그린 개념도](assets/%3C%EC%A0%9C%EB%AA%A9%3E%2001.jpg)
+
+*[`02:40`](https://www.youtube.com/watch?v=VIDEO_ID&t=160s) 화자가 그린 개념도*
+```
+
 ### 채널의 새 영상 찾기
 
 ```bash
@@ -247,6 +270,7 @@ done
 | `sections[].points[]` | 주제별 상세 | 슬랙 스레드 · `.md` |
 | `entities.keywords` / `figures` | 키워드, 언급된 수치 | 라우팅 · 필터링용 |
 | `disclaimer` | 주의 문구 (해당될 때만) | 전 채널 |
+| `frames[]` | (선택) 붙인 장면 `{t, file, caption}` — `frames.py --attach` 가 기록 | `.md` 만 |
 
 모든 항목에 `t`(초)가 붙는다. 점프 링크 생성과 원문 대조에 함께 쓰인다.
 
@@ -258,6 +282,7 @@ done
 | `lang` / `auto_generated` | 자막 트랙 언어, 자동 생성 여부 |
 | `backend` / `model` | `claude-cli` 또는 `openai`, 사용한 모델 이름 |
 | `template` | `youtube-summary-ko@1` |
+| `preset` | `short` · `default` · `long` · `easy` |
 | `generated_at` | 생성 시각 |
 | `extract` | 부분 요약일 때만 — `{kept, total}` |
 
@@ -273,12 +298,26 @@ done
 template.json
    ├─ rules, schema  → summarize.py 가 프롬프트를 만든다
    ├─ limits         → summarize.py 가 결과를 검사·보정한다
+   ├─ presets        → 고른 프리셋이 limits 를 덮어쓰고 rules 를 덧붙인다
    └─ channels       → render.py 가 카카오톡·슬랙 한도로 쓴다
 ```
 
 강제되는 값: `key_points` 3~5개 · `sections` 3~6개 · 섹션당 `points` 2~7개 · `headline` 100자 · 핵심 항목 90자 · 카카오톡 1000자 · 슬랙 블록 3000자.
 
 `--template my.json` 으로 갈아끼우면 프롬프트·검증·렌더가 함께 따라온다.
+
+### 프리셋 — 짧게 · 기본 · 길게 · 쉽게
+
+`--preset` 으로 분량·난이도를 고른다. 프리셋은 `template.json` 의 `presets` 에 있고, 고른 프리셋의 `limits` 가 기본 한도를 덮어쓰고 `rules` 가 규칙 끝에 붙는다. 프롬프트와 검사·보정이 같은 한도를 보므로 "짧게" 를 골랐는데 핵심이 5개 오면 3개로 잘린다.
+
+| 프리셋 | `key_points` | `sections` | 섹션당 `points` | 덧붙는 규칙 |
+| --- | --- | --- | --- | --- |
+| `default` | 3~5 | 3~6 | 2~7 | — |
+| `short` | 2~3 | 2~3 | 2~4 | 핵심 주장과 결론만, 곁가지 예시는 뺀다 |
+| `long` | 4~7 | 5~10 | 2~7 | 흐름을 빠짐없이, 예시·근거·수치까지 (자막을 옮겨 적지는 않음) |
+| `easy` | 3~5 | 3~6 | 2~7 | 짧고 평이한 문장. 용어 풀이는 영상 안의 설명만 쓴다 |
+
+어떤 프리셋으로 만든 요약인지는 `source.preset` 에 남는다. 프롬프트는 `python3 template.py short` 로 미리 볼 수 있다. `presets` 가 없는 옛 템플릿을 `--template` 으로 넘기면 `default` 만 쓸 수 있다.
 
 | 템플릿 | `key_points` | `sections` | 카카오톡 |
 | --- | --- | --- | --- |
@@ -346,6 +385,7 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 | `tests/verify_template.py` | 양식 강제 동작 검증 |
 | `tests/verify_discover.py` | 새 영상 판정 규칙 검증 (네트워크 없음) |
 | `tests/verify_frames.py` | 장면 시각 해석·번호·배치 검증 (네트워크 없음) |
+| `tests/verify_presets.py` | 프리셋이 프롬프트·검사·보정에 함께 적용되는지 검증 (모델 호출 없음) |
 | `setup.sh` | 실행 환경 점검 · 부족한 도구 설치 |
 
 ---
@@ -392,4 +432,4 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 
 외부 도구인 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 는 별도 프로젝트이며 [The Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE)(퍼블릭 도메인)다. 이 저장소는 `yt-dlp` 를 포함하지 않고 설치된 실행 파일을 호출만 하므로 라이선스가 섞이지 않는다.
 
-**라이선스와 별개로**, 이 도구로 받은 자막과 요약의 권리는 각 영상 저작권자에게 있다. 재배포·공개 전에 확인이 필요하다. `summaries/`, `transcripts/` 를 기본적으로 `.gitignore` 에 두는 이유다.
+**라이선스와 별개로**, 이 도구로 받은 자막과 요약, `frames.py` 로 잘라 낸 장면 이미지의 권리는 각 영상 저작권자에게 있다. 특히 장면은 영상 화면 그 자체라 개인 학습용으로만 두고, 재배포·공개 전에 확인이 필요하다. `summaries/`, `transcripts/` 를 기본적으로 `.gitignore` 에 두는 이유이고, 저장소에 포함된 예시 산출물에도 장면 이미지는 넣지 않았다.
