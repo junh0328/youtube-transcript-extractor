@@ -9,6 +9,7 @@
 기존 로그인을 그대로 쓴다. .env 나 환경변수에 YT_LLM_BASE_URL 을 두면 OpenAI 호환
 /chat/completions 로 보낸다. 이때 YT_LLM_MODEL(또는 --model)이 필요하고, 키는
 YT_LLM_API_KEY 로 넘긴다. 호출 방식을 바꾸려면 send() 와 send_images() 를 고친다.
+YT_LLM_FALLBACK_MODEL 을 두면 기본 모델 전송이 연달아 실패할 때 그 모델로 넘어간다.
 
 영상 메타데이터(제목·URL·길이 등)는 모델에게 맡기지 않고 자막 헤더에서 직접 읽는다.
 모델은 요약 본문만 만든다 — 틀릴 수 있는 값을 모델에게 넘기지 않기 위해서다.
@@ -98,23 +99,51 @@ def resolve_backend(model):
     vLLM, Ollama, Gemini(OpenAI 호환 경로)가 모두 같은 규격이라
     구현 하나로 모두 부를 수 있다. 키는 YT_LLM_API_KEY 로 넘기고,
     없으면 Authorization 헤더를 붙이지 않는다.
+
+    YT_LLM_FALLBACK_MODEL 은 같은 엔드포인트의 백업 모델이다. 새 모델이 과부하(503)거나
+    무료 할당량(429)이 바닥났을 때 넘어간다 — Gemini 무료 티어는 할당량을 모델마다 따로 센다.
     """
     load_env_file()
     base = os.environ.get("YT_LLM_BASE_URL", "").strip()
     chosen = model or os.environ.get("YT_LLM_MODEL", "").strip()
+    fallback = os.environ.get("YT_LLM_FALLBACK_MODEL", "").strip()
     if base:
         if not chosen:
             sys.exit("[에러] YT_LLM_BASE_URL 을 쓰려면 YT_LLM_MODEL 또는 --model 이 필요합니다.")
-        return {"kind": "openai", "base_url": base, "model": chosen,
-                "api_key": os.environ.get("YT_LLM_API_KEY", "").strip()}
-    return {"kind": "claude-cli", "model": chosen or "claude-opus-5"}
+        backend = {"kind": "openai", "base_url": base, "model": chosen,
+                   "api_key": os.environ.get("YT_LLM_API_KEY", "").strip()}
+    else:
+        backend = {"kind": "claude-cli", "model": chosen or "claude-opus-5"}
+    backend["fallback"] = fallback if fallback != backend["model"] else ""
+    return backend
 
 
 def describe_backend(backend):
     if backend["kind"] == "claude-cli":
-        return "claude CLI · {}".format(backend["model"])
-    host = re.sub(r"^https?://", "", backend["base_url"]).split("/")[0]
-    return "{} · {}".format(host, backend["model"])
+        out = "claude CLI · {}".format(backend["model"])
+    else:
+        host = re.sub(r"^https?://", "", backend["base_url"]).split("/")[0]
+        out = "{} · {}".format(host, backend["model"])
+    return out + (" (백업 {})".format(backend["fallback"]) if backend.get("fallback") else "")
+
+
+FALLBACK_AFTER = 2
+
+
+def switch_model(backend, error, fails, last=False):
+    """전송이 fails 번 연달아 실패했거나 마지막 시도가 실패했으면 백업 모델로 바꾼다. 바꿨으면 True.
+
+    backend 를 그 자리에서 고친다. 그래서 이후 호출과 요약 기록(source.model)이
+    실제로 답한 모델을 따라간다. 404(모델 이름이 틀렸거나 아직 열리지 않음)는
+    기다려도 풀리지 않으니 바로 넘어간다.
+    """
+    nxt = backend.get("fallback")
+    if not nxt or not (fails >= FALLBACK_AFTER or last or error.startswith("HTTP 404")):
+        return False
+    print("[전환] {} 전송 실패 {}회({}) → {} 로 계속합니다".format(
+        backend["model"], fails, error.split(":")[0], nxt), file=sys.stderr)
+    backend["model"], backend["fallback"] = nxt, ""
+    return True
 
 
 def _call_claude_cli(prompt, backend):
@@ -199,8 +228,14 @@ def call_model(prompt, backend, duration, tpl, retries=3):
     구조가 깨졌으면 무엇이 잘못됐는지 되먹여 다시 받는다.
     """
     feedback = ""
-    for attempt in range(retries):
+    attempt = fails = 0
+    while attempt < retries:
         raw, error = send(prompt + feedback, backend)
+        fails = fails + 1 if error else 0
+        if error and switch_model(backend, error, fails, last=attempt == retries - 1):
+            # 백업 모델은 시도 횟수를 처음부터 다시 받는다
+            attempt = fails = 0
+            continue
         if error:
             # 전송 실패는 모델이 잘못 쓴 게 아니다. 되먹일 내용이 없고, 쉬었다 다시 걸어야 한다
             # (무료 티어의 429 가 대표적이다)
@@ -209,6 +244,7 @@ def call_model(prompt, backend, duration, tpl, retries=3):
                 wait = 15 * (attempt + 1)
                 print("[재시도] {} — {}초 뒤 다시 시도합니다".format(error, wait), file=sys.stderr)
                 time.sleep(wait)
+                attempt += 1
                 continue
         else:
             data = extract_json(raw)
@@ -236,6 +272,7 @@ def call_model(prompt, backend, duration, tpl, retries=3):
             print("         · " + p, file=sys.stderr)
         feedback = ("\n\n(직전 응답의 문제: " + " / ".join(problems[:8]) +
                     ". 스키마를 정확히 지켜 JSON 만 다시 출력하세요.)")
+        attempt += 1
 
     sys.exit("[에러] {}회 시도했지만 요약을 얻지 못했습니다. 위 [재시도] 줄에서 원인을 확인하세요. "
              "전송 실패라면 python3 summarize.py --selftest 로 연결부터 확인합니다.".format(retries))
@@ -450,11 +487,25 @@ def main():
     if args.selftest:
         # setup.sh 가 부른다. 백엔드가 무엇이든 같은 방식으로 확인하기 위해
         # bash 쪽에 HTTP 호출을 또 구현하지 않고 여기서 처리한다
-        raw, error = send("Reply with exactly: OK", backend)
-        if error or "OK" not in (raw or ""):
-            print("[실패] {} — {}".format(describe_backend(backend), error or "응답 없음"))
+        # 백업 모델이 있으면 둘 다 확인하되 한 줄로 알린다 (setup.sh 가 [정상]/[실패] 접두어를 읽는다)
+        def probe(model):
+            raw, error = send("Reply with exactly: OK", dict(backend, model=model))
+            return None if not error and "OK" in (raw or "") else (error or "응답 없음")
+        main_err = probe(backend["model"])
+        backup = backend.get("fallback")
+        backup_err = probe(backup) if backup else None
+        if main_err and (not backup or backup_err):
+            print("[실패] {} — {}".format(describe_backend(backend), main_err) +
+                  (" / 백업 {} — {}".format(backup, backup_err) if backup else ""))
             return 1
-        print("[정상] {}".format(describe_backend(backend)))
+        if main_err:
+            print("[정상] {} 는 실패({}) — 백업 {} 로 동작".format(
+                describe_backend(dict(backend, fallback="")), main_err.split(":")[0], backup))
+        elif backup_err:
+            print("[정상] {} — 백업 {} 는 실패({})".format(
+                describe_backend(dict(backend, fallback="")), backup, backup_err.split(":")[0]))
+        else:
+            print("[정상] {}".format(describe_backend(backend)))
         return 0
 
     if not args.transcript:

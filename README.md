@@ -120,7 +120,8 @@ cp .env.example .env
 # .env — Gemini 무료 티어 예시 (주석을 푼 뒤의 모습)
 YT_LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
 YT_LLM_API_KEY=발급받은_키
-YT_LLM_MODEL=gemini-2.5-flash
+YT_LLM_MODEL=gemini-3.5-flash
+YT_LLM_FALLBACK_MODEL=gemini-2.5-flash
 ```
 
 | 변수 | 없으면 |
@@ -128,6 +129,7 @@ YT_LLM_MODEL=gemini-2.5-flash
 | `YT_LLM_BASE_URL` | claude CLI 를 쓴다 |
 | `YT_LLM_MODEL` | (BASE_URL 이 있으면) `--model` 을 주지 않는 한 오류다 |
 | `YT_LLM_API_KEY` | 인증 헤더를 붙이지 않는다 (Ollama 같은 로컬 서버용) |
+| `YT_LLM_FALLBACK_MODEL` | 백업 모델로 넘어가지 않는다 |
 
 셸에서 `export` 한 값이 `.env` 보다 우선한다(`setup.sh` · `summarize.py` 모두 같다). 한 번만 다르게 돌려볼 때 쓴다.
 
@@ -138,12 +140,16 @@ YT_LLM_MODEL=gemini-2.5-pro python3 yt-transcript.py "$URL"
 연결이 되는지는 자막 없이 먼저 확인할 수 있다.
 
 ```bash
-python3 summarize.py --selftest      # [정상] generativelanguage.googleapis.com · gemini-2.5-flash
+python3 summarize.py --selftest      # [정상] generativelanguage.googleapis.com · gemini-3.5-flash (백업 gemini-2.5-flash)
 ```
+
+백업 모델을 두면 기본 모델과 백업 모델을 둘 다 확인한다. 둘 중 하나라도 응답하면 `[정상]` 이고, 실패한 쪽은 같은 줄에 적힌다.
 
 `response_format: json_object` 를 붙여 보내되, 제공자가 거부하면(400/404/422) 자동으로 빼고 다시 보낸다. HTTP 오류는 15초·30초 간격으로 최대 3회 재시도한다 — 무료 티어의 429 를 넘기기 위해서다.
 
-어떤 백엔드로 만든 요약인지는 `source.backend` 와 `source.model` 에 남는다.
+`YT_LLM_FALLBACK_MODEL` 이 있으면 기본 모델 전송이 2회 연달아 실패할 때 백업 모델로 넘어가고, 백업 모델은 다시 3회까지 시도한다. 404(모델 이름이 틀렸거나 아직 열리지 않은 모델)는 1회 만에 넘어간다. 새 모델은 과부하(503)가 잦고, Gemini 무료 할당량은 모델마다 따로 세기 때문에 기다리는 것보다 모델을 바꾸는 편이 빠르다. 응답은 왔는데 양식이 깨진 경우는 넘어가지 않고, 같은 모델에게 문제를 알려 다시 쓰게 한다. 장면 판별(`--frames-review`)도 같은 규칙을 따른다. 넘어가면 `[전환]` 줄이 찍힌다.
+
+어떤 백엔드로 만든 요약인지는 `source.backend` 와 `source.model` 에 남는다. 백업으로 넘어갔다면 `source.model` 에는 실제로 답한 백업 모델이 적힌다.
 
 ---
 
@@ -432,6 +438,7 @@ key_points 가 배열이 아닌 문자열    차단(재시도)  -
 | `tests/verify_discover.py` | 새 영상 판정 규칙 검증 (네트워크 없음) |
 | `tests/verify_frames.py` | 장면 시각 해석·번호·배치와 판별 응답 해석 검증 (네트워크·모델 호출 없음) |
 | `tests/verify_presets.py` | 프리셋이 프롬프트·검사·보정에 함께 적용되는지 검증 (모델 호출 없음) |
+| `tests/verify_fallback.py` | 전송 실패 시 백업 모델 전환 조건 검증 (모델 호출 없음) |
 | `setup.sh` | 실행 환경 점검 · 부족한 도구 설치 |
 
 ---

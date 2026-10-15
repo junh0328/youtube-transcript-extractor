@@ -175,8 +175,13 @@ def review(groups, backend, send=None, retries=2):
         parts.append(("text", "\n## 후보 {}{}".format(i, " — 자막상 예상: " + caption if caption else "")))
         for j, (sec, path) in enumerate(shots, 1):
             parts += [("text", "이미지 {}-{} ({})".format(i, j, label(sec))), ("image", path)]
-    for attempt in range(retries):
+    attempt = fails = 0
+    while attempt < retries:
         raw, error = send(parts, backend)
+        fails = fails + 1 if error else 0
+        if error and sm.switch_model(backend, error, fails, last=attempt == retries - 1):
+            attempt = fails = 0
+            continue
         data = sm.extract_json(raw) if raw else None
         picks = data.get("picks") if isinstance(data, dict) else None
         if isinstance(picks, list):
@@ -193,6 +198,7 @@ def review(groups, backend, send=None, retries=2):
             error or "올바른 JSON 이 아닙니다", attempt + 1, retries), file=sys.stderr)
         if attempt < retries - 1:
             time.sleep(15)
+        attempt += 1
     return None
 
 
